@@ -1,0 +1,57 @@
+"""
+Standalone Presentation App Configuration
+"""
+
+# Station info
+STATION_INFO = {
+    '8415191': {
+        'name': 'Belfast Harbor, ME',
+        'lat': 44.428903,
+        'lon': -69.004461
+    },
+    '8418150': {
+        'name': 'Portland, ME',
+        'lat': 43.6563,
+        'lon': -70.2436
+    }
+}
+DEFAULT_STATION = '8415191'
+
+# Map
+MAP_STYLE = 'open-street-map'
+DEFAULT_ZOOM = 12
+MAP_HEIGHT = 800
+
+# Wind display
+MIN_WIND_SPEED_DISPLAY = 1.0
+WIND_ARROW_SCALE = 0.002
+
+# Surge thresholds/colors
+SURGE_THRESHOLDS = {
+    'extreme_low': -1.5,
+    'normal_low': -0.5,
+    'normal_high': 0.5,
+    'moderate': 1.5,
+    'high': 2.5
+}
+SURGE_COLORS = {
+    'extreme_low': '#1a472a',
+    'normal': '#2ecc71',
+    'moderate': '#f39c12',
+    'high': '#e74c3c',
+    'extreme': '#8b0000'
+}
+
+# Wind history
+WIND_HISTORY_LENGTH = 6
+WIND_FADE_OPACITY_MIN = 0.2
+WIND_FADE_OPACITY_MAX = 0.8
+WIND_HISTORY_MODE = 'arrows'
+
+# NOAA API
+NOAA_API_BASE = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
+API_TIMEOUT = 30
+PREDICTION_BUFFER_DAYS = 2
+
+# Processing
+TIDAL_WINDOW = '25h'
