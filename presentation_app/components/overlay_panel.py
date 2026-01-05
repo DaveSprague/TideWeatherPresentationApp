@@ -42,7 +42,7 @@ def create_overlay_panel(min_date: Optional[pd.Timestamp] = None,
             ], className="mb-2 w-100")
         ]),
         html.Div([
-            dcc.Slider(id='time-slider', min=0, max=100, value=0, marks={}, tooltip={"placement": "bottom", "always_visible": False}, className="mb-2")
+            dcc.Slider(id='time-slider', min=0, max=100, value=0, marks={}, tooltip={"placement": "bottom", "always_visible": False}, updatemode='drag', className="mb-2")
         ]),
         dbc.Row([
             dbc.Col([
@@ -54,22 +54,7 @@ def create_overlay_panel(min_date: Optional[pd.Timestamp] = None,
                 dcc.Dropdown(id='step-size-selector', options=[{'label':'1x','value':1},{'label':'2x','value':2},{'label':'4x','value':4},{'label':'8x','value':8}], value=1, clearable=False, className="step-dropdown")
             ], width=5),
         ], className="mb-3"),
-        html.Div([
-            html.Label("Wind History Mode", className="small mb-1"),
-            dcc.Dropdown(id='wind-history-mode', options=[{'label':'Fading Arrows','value':'arrows'},{'label':'Off','value':'off'}], value='arrows', clearable=False, className="mb-3")
-        ]),
-        html.Div([
-            html.Div("Wind Rose (recent)", className="chart-title small mb-1"),
-            dcc.Graph(id='wind-rose-chart', config={'displayModeBar': False}, style={'height': '220px'})
-        ], className="mb-3"),
-        html.Div([
-            html.Div("Wind Arrows (recent)", className="chart-title small mb-1"),
-            dcc.Graph(id='wind-samples-chart', config={'displayModeBar': False}, style={'height': '200px'})
-        ], className="mb-3"),
-        html.Div([
-            html.Div("Water Level", className="chart-title small mb-1"),
-            dcc.Graph(id='compact-chart', config={'displayModeBar': False}, style={'height': '150px'})
-        ], className="mb-3"),
+        # Wind history mode control removed (redundant) and compact water chart removed
         dbc.Accordion([
             dbc.AccordionItem([
                 dbc.Row([

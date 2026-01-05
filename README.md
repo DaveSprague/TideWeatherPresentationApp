@@ -14,13 +14,13 @@ pip install -r requirements.txt
 python -m presentation_app.app
 ```
 
-Open http://localhost:8051
+Open http://localhost:8052 (or whatever `PORT` you set)
 
 ## Features
 - Map via Plotly `Scattermap` (Maplibre), no token required
-- Fading wind arrow history (no ribbon)
-- Donut wind rose that accumulates up to current time
+- Wind overlays on-map: fading arrows + accumulating wind rose at the station
 - Water level and wind speed charts with current value callouts
+- Timeline scrubber updates map overlays live (wind rose and arrows)
 
 ## Structure
 ```
@@ -54,10 +54,16 @@ presentation_app_standalone/
 
 ### Render / Railway / Heroku (Procfile)
 - `requirements.txt` includes `gunicorn`.
-- `Procfile`:
+- `Procfile` already present:
 ```
 web: gunicorn -w 2 -k gthread -b 0.0.0.0:$PORT presentation_app.app:app.server
 ```
+
+Deploy steps (Render-style):
+1) Push to GitHub
+2) Create a new Web Service from this repo
+3) Set `Start command` to use the Procfile (Render auto-detects) or explicitly `gunicorn -w 2 -k gthread -b 0.0.0.0:$PORT presentation_app.app:app.server`
+4) Ensure `PORT` env var is provided by the platform (Render/Heroku/Railway do this automatically)
 
 ### Docker
 ```Dockerfile
@@ -66,17 +72,23 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
-ENV PORT=8051
-EXPOSE 8051
+ENV PORT=8052
+EXPOSE 8052
 CMD ["gunicorn","-w","2","-k","gthread","-b","0.0.0.0:${PORT}","presentation_app.app:app.server"]
 ```
 
 Build and run:
 ```bash
 docker build -t presentation-app .
-docker run -p 8051:8051 presentation-app
+docker run -p 8052:8052 -e PORT=8052 presentation-app
 ```
 
 ## Notes
 - Default center date set to 2024-01-10; window clamps to available data if needed.
 - NOAA predictions fetched with small buffer for interpolation; falls back to nearby stations if needed.
+- VS Code workspace settings included for `.venv` activation and Dash debugging (see .vscode/).
+
+## TODO
+- Add rainfall graph and optionally overlay rainfall intensity on the map.
+- Add draggable sliders at the ends of the timeline to adjust the start/end datetimes for the visible window.
+- Support multiple locations (wind, tide, rainfall) displayed simultaneously on the map, e.g., sites around Penobscot Bay.
