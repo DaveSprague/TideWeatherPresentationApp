@@ -5,4 +5,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 ENV PORT=8051
 EXPOSE 8051
-CMD ["gunicorn","-w","2","-k","gthread","-b","0.0.0.0:${PORT}","presentation_app.app:app.server"]
+CMD gunicorn -w 2 -k gthread -b 0.0.0.0:$PORT presentation_app.app:server
