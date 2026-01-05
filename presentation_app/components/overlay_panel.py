@@ -73,6 +73,9 @@ def create_overlay_panel(min_date: Optional[pd.Timestamp] = None,
             ], title="Data & Settings", className="small")
         ], start_collapsed=True, flush=True),
         dcc.Interval(id='animation-interval', interval=250, disabled=True),
-        dcc.Store(id='data-store'),
-        dcc.Store(id='animation-data-store'),
+        # Session-scoped stores so each browser tab keeps its own data
+        dcc.Store(id='data-store', storage_type='session'),
+        dcc.Store(id='animation-data-store', storage_type='session'),
+        dcc.Store(id='session-id', storage_type='session'),
+        dcc.Store(id='data-version', storage_type='session', data=0),
     ], id='overlay-panel', className='overlay-panel')

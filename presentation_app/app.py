@@ -8,6 +8,7 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 import logging
 import os
+import uuid
 import plotly.graph_objects as go
 
 from utils import create_presentation_map
@@ -66,7 +67,8 @@ def build_frame_patches(frame):
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP], suppress_callback_exceptions=True)
 app.title = "Storm Surge Visualization - Presentation Mode"
-app_data = {'tide_df': None,'weather_df': None,'processed_df': None,'station_id': '8415191'}
+app_data = {'tide_df': None,'weather_df': None,'station_id': '8415191'}
+session_cache = {}
 
 try:
     tide_df = pd.read_csv('tide_belfast.csv', comment='#', header=None, names=['timestamp', 'timestring', 'water_level'])
@@ -111,6 +113,25 @@ app.layout = html.Div([
 ], style={'margin': 0, 'padding': 0, 'overflow': 'hidden', 'height': '100vh'})
 
 
+@app.callback(Output('session-id', 'data'), Input('time-slider', 'id'), State('session-id', 'data'))
+def ensure_session_id(_, existing):
+    if existing:
+        return existing
+    return str(uuid.uuid4())
+
+
+@app.callback(
+    Output('data-version', 'data'),
+    Input('upload-tide-data', 'contents'),
+    Input('upload-weather-data', 'contents'),
+    State('data-version', 'data'),
+    prevent_initial_call=True
+)
+def invalidate_cache_on_upload(tide_contents, weather_contents, current_version):
+    """Increment data version when new files are uploaded to invalidate the cache."""
+    return (current_version or 0) + 1
+
+
 @app.callback(
     Output('center-date-picker', 'min_date_allowed'),
     Output('center-date-picker', 'max_date_allowed'),
@@ -144,13 +165,20 @@ def load_sample_data(n_clicks):
      Output('time-slider', 'marks'),
      Output('animation-data-store', 'data')],
     Input('center-date-picker', 'date'),
-    State('data-store', 'data')
+    State('data-store', 'data'),
+    State('session-id', 'data'),
+    State('data-version', 'data')
 )
-def process_data(center_date, stored_data):
+def process_data(center_date, stored_data, session_id, data_version):
     if app_data['tide_df'] is None or app_data['weather_df'] is None:
         empty_fig = {'data': [], 'layout': {'title': 'Upload data to begin'}}
         return empty_fig, empty_fig, empty_fig, "No data", 0, {}, None
     try:
+        session_token = session_id or str(uuid.uuid4())
+        cache_key = (session_token, str(center_date), data_version or 0)
+        cached = session_cache.get(cache_key)
+        if cached:
+            return cached
         center_dt = pd.to_datetime(center_date)
         start_dt = center_dt - pd.Timedelta(days=2)
         end_dt = center_dt + pd.Timedelta(days=2)
@@ -188,7 +216,6 @@ def process_data(center_date, stored_data):
         processor = SurgeProcessor()
         processed_df = processor.calculate_surge_from_predictions(merged_df, predictions, method='pchip')
         anim_df = processor.resample_data(processed_df, interval='15min')
-        app_data['processed_df'] = anim_df
         from config import STATION_INFO
         station_info = STATION_INFO.get(station_id, STATION_INFO['8415191'])
         center_lat = station_info['lat']
@@ -217,8 +244,21 @@ def process_data(center_date, stored_data):
             for i in range(0, len(anim_df), stride):
                 marks[i] = anim_df.index[i].strftime('%m/%d %H:%M')
         marks[len(anim_df) - 1] = anim_df.index[-1].strftime('%b %d')
-        animation_store = {'frames': animation_frames, 'center_lat': center_lat, 'center_lon': center_lon, 'water_level_min': float(anim_df['water_level'].min()) - 1, 'water_level_max': float(anim_df['water_level'].max()) + 1}
-        return (map_fig, water_chart, wind_chart, station_name, len(anim_df) - 1, marks, animation_store)
+        anim_records = anim_df.reset_index().rename(columns={'index': 'dt'})
+        anim_records['dt'] = anim_records['dt'].dt.strftime('%Y-%m-%dT%H:%M:%S')
+        animation_store = {
+            'frames': animation_frames,
+            'records': anim_records.to_dict('records'),
+            'center_lat': center_lat,
+            'center_lon': center_lon,
+            'station_name': station_name,
+            'station_id': station_id,
+            'water_level_min': float(anim_df['water_level'].min()) - 1,
+            'water_level_max': float(anim_df['water_level'].max()) + 1
+        }
+        result = (map_fig, water_chart, wind_chart, station_name, len(anim_df) - 1, marks, animation_store)
+        session_cache[cache_key] = result
+        return result
     except Exception as e:
         logger.error(f"Error processing data: {e}", exc_info=True)
         empty_fig = {'data': [], 'layout': {'title': f'Error: {str(e)}'}}
@@ -237,19 +277,24 @@ def process_data(center_date, stored_data):
     prevent_initial_call=True
 )
 def update_time_position(time_idx, animation_data):
-    if not animation_data or time_idx is None or app_data.get('processed_df') is None:
+    if not animation_data or time_idx is None:
         return (dash.no_update,) * 6
     frames = animation_data['frames']
     if time_idx >= len(frames):
         return (dash.no_update,) * 6
     frame = frames[time_idx]
     try:
-        anim_df = app_data['processed_df']
+        anim_df = pd.DataFrame(animation_data.get('records', []))
+        if anim_df.empty:
+            raise ValueError("Missing animation records")
+        anim_df['dt'] = pd.to_datetime(anim_df['dt'])
+        anim_df = anim_df.set_index('dt')
         current_time = anim_df.index[time_idx]
         from config import STATION_INFO
-        station_id = app_data['station_id']
+        station_id = animation_data.get('station_id', '8415191')
         station_info = STATION_INFO.get(station_id, STATION_INFO['8415191'])
-        map_fig = create_presentation_map(anim_df, station_info['lat'], station_info['lon'], current_time, station_info['name'], wind_history_mode='arrows', wind_rose_overlay=True)
+        station_name = animation_data.get('station_name', station_info['name'])
+        map_fig = create_presentation_map(anim_df, station_info['lat'], station_info['lon'], current_time, station_name, wind_history_mode='arrows', wind_rose_overlay=True)
         map_fig.update_layout(uirevision='map-constant')
     except Exception as e:
         logger.error(f"Error creating map: {e}")
