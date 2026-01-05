@@ -11,18 +11,18 @@ import os
 import math
 import plotly.graph_objects as go
 
-from presentation_app.utils import calculate_arrow_geometry, create_presentation_map
-from presentation_app.components.overlay_panel import create_overlay_panel
-from presentation_app.config import (
+from utils import calculate_arrow_geometry, create_presentation_map
+from components.overlay_panel import create_overlay_panel
+from config import (
     MIN_WIND_SPEED_DISPLAY,
     WIND_ARROW_SCALE,
     WIND_HISTORY_LENGTH,
     MAP_STYLE,
     DEFAULT_ZOOM
 )
-from presentation_app.data.loader import DataLoader
-from presentation_app.data.noaa_api import NOAAClient
-from presentation_app.data.processor import SurgeProcessor
+from data.loader import DataLoader
+from data.noaa_api import NOAAClient
+from data.processor import SurgeProcessor
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -279,7 +279,7 @@ def process_data(center_date, stored_data, wind_history_mode):
         processed_df = processor.calculate_surge_from_predictions(merged_df, predictions, method='pchip')
         anim_df = processor.resample_data(processed_df, interval='15min')
         app_data['processed_df'] = anim_df
-        from presentation_app.config import STATION_INFO
+        from config import STATION_INFO
         station_info = STATION_INFO.get(station_id, STATION_INFO['8415191'])
         center_lat = station_info['lat']
         center_lon = station_info['lon']
@@ -333,7 +333,7 @@ def update_wind_history_mode(wind_mode, animation_data, time_idx):
     try:
         anim_df = app_data['processed_df']
         current_time = anim_df.index[time_idx or 0]
-        from presentation_app.config import STATION_INFO
+        from config import STATION_INFO
         station_id = app_data['station_id']
         station_info = STATION_INFO.get(station_id, STATION_INFO['8415191'])
         map_fig = create_presentation_map(anim_df, station_info['lat'], station_info['lon'], current_time, station_info['name'], wind_history_mode=wind_mode or 'arrows')
@@ -368,7 +368,7 @@ def update_time_position(time_idx, animation_data, wind_mode):
     try:
         anim_df = app_data['processed_df']
         current_time = anim_df.index[time_idx]
-        from presentation_app.config import STATION_INFO
+        from config import STATION_INFO
         station_id = app_data['station_id']
         station_info = STATION_INFO.get(station_id, STATION_INFO['8415191'])
         map_fig = create_presentation_map(anim_df, station_info['lat'], station_info['lon'], current_time, station_info['name'], wind_history_mode=wind_mode or 'arrows')
@@ -426,6 +426,6 @@ def update_speed(speed_ms):
 
 if __name__ == '__main__':
     logger.info("Starting Belfast Harbor Storm Surge & Wind Visualization - PRESENTATION MODE (Standalone)")
-    port = int(os.getenv('PORT', '8051'))
+    port = int(os.getenv('PORT', '8052'))
     logger.info(f"Server running on http://localhost:{port}")
     app.run(debug=True, port=port)

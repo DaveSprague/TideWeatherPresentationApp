@@ -6,7 +6,7 @@ import pandas as pd
 import logging
 from datetime import timedelta
 from typing import Optional
-from presentation_app.config import NOAA_API_BASE, API_TIMEOUT, PREDICTION_BUFFER_DAYS, STATION_INFO, DEFAULT_STATION
+from config import NOAA_API_BASE, API_TIMEOUT, PREDICTION_BUFFER_DAYS, STATION_INFO, DEFAULT_STATION
 
 logger = logging.getLogger(__name__)
 

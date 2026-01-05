@@ -6,7 +6,7 @@ import numpy as np
 import logging
 from scipy.interpolate import PchipInterpolator
 from typing import Optional
-from presentation_app.config import TIDAL_WINDOW, SURGE_THRESHOLDS, SURGE_COLORS
+from config import TIDAL_WINDOW, SURGE_THRESHOLDS, SURGE_COLORS
 
 logger = logging.getLogger(__name__)
 
