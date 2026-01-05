@@ -67,6 +67,7 @@ def build_frame_patches(frame):
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP], suppress_callback_exceptions=True)
 app.title = "Storm Surge Visualization - Presentation Mode"
+server = app.server  # Expose Flask server for gunicorn
 app_data = {'tide_df': None,'weather_df': None,'station_id': '8415191'}
 session_cache = {}
 
