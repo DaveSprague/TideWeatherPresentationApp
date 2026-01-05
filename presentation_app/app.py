@@ -328,6 +328,11 @@ def update_speed(speed_ms):
     return speed_ms
 
 
+@app.server.route('/health')
+def health_check():
+    return {'status': 'ok'}, 200
+
+
 if __name__ == '__main__':
     logger.info("Starting Belfast Harbor Storm Surge & Wind Visualization - PRESENTATION MODE (Standalone)")
     port = int(os.getenv('PORT', '8052'))
