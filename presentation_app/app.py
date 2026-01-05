@@ -265,6 +265,8 @@ def process_data(center_date, stored_data, session_id, data_version):
         }
         result = (map_fig, water_chart, wind_chart, station_name, len(anim_df) - 1, marks, animation_store)
         session_cache[cache_key] = result
+        # Also cache the DataFrame for quick map updates
+        session_cache[f"{cache_key}_df"] = anim_df
         return result
     except Exception as e:
         logger.error(f"Error processing data: {e}", exc_info=True)
@@ -290,22 +292,10 @@ def update_time_position(time_idx, animation_data):
     if time_idx >= len(frames):
         return (dash.no_update,) * 6
     frame = frames[time_idx]
-    try:
-        anim_df = pd.DataFrame(animation_data.get('records', []))
-        if anim_df.empty:
-            raise ValueError("Missing animation records")
-        anim_df['dt'] = pd.to_datetime(anim_df['dt'])
-        anim_df = anim_df.set_index('dt')
-        current_time = anim_df.index[time_idx]
-        from .config import STATION_INFO
-        station_id = animation_data.get('station_id', '8415191')
-        station_info = STATION_INFO.get(station_id, STATION_INFO['8415191'])
-        station_name = animation_data.get('station_name', station_info['name'])
-        map_fig = create_presentation_map(anim_df, station_info['lat'], station_info['lon'], current_time, station_name, wind_history_mode='arrows', wind_rose_overlay=True)
-        map_fig.update_layout(uirevision='map-constant')
-    except Exception as e:
-        logger.error(f"Error creating map: {e}")
-        map_fig = dash.no_update
+    
+    # Use dash.no_update for map to avoid flashing - map doesn't need per-frame updates
+    map_fig = dash.no_update
+    
     water_chart_patch, wind_chart_patch, time_str, surge_str, wind_str = build_frame_patches(frame)
     return (map_fig, water_chart_patch, wind_chart_patch, time_str, surge_str, wind_str)
 
