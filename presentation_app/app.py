@@ -277,9 +277,10 @@ def process_data(center_date, stored_data, session_id, data_version):
      Output('current-wind-value', 'children')],
     Input('time-slider', 'value'),
     State('animation-data-store', 'data'),
+    State('animation-interval', 'disabled'),
     prevent_initial_call=True
 )
-def update_time_position(time_idx, animation_data):
+def update_time_position(time_idx, animation_data, animation_paused):
     if not animation_data or time_idx is None:
         return (dash.no_update,) * 6
     frames = animation_data['frames']
@@ -287,27 +288,34 @@ def update_time_position(time_idx, animation_data):
         return (dash.no_update,) * 6
     frame = frames[time_idx]
     
+    # Update map only when animation is paused or every 4th frame to allow map interactions
+    should_update_map = animation_paused or (time_idx % 4 == 0)
+    
     # Rebuild DataFrame from cache for map updates
-    try:
-        cache_key = None
-        for key in session_cache.keys():
-            if isinstance(key, str) and key.endswith('_df'):
-                cache_key = key
-                break
-        
-        if cache_key and cache_key in session_cache:
-            anim_df = session_cache[cache_key]
-            current_time = anim_df.index[time_idx]
-            from .config import STATION_INFO
-            station_id = animation_data.get('station_id', '8415191')
-            station_info = STATION_INFO.get(station_id, STATION_INFO['8415191'])
-            station_name = animation_data.get('station_name', station_info['name'])
-            map_fig = create_presentation_map(anim_df, station_info['lat'], station_info['lon'], current_time, station_name, wind_history_mode='arrows', wind_rose_overlay=True)
-            map_fig.update_layout(uirevision='map-constant', transition={'duration': 0})
-        else:
+    if should_update_map:
+        try:
+            cache_key = None
+            for key in session_cache.keys():
+                if isinstance(key, str) and key.endswith('_df'):
+                    cache_key = key
+                    break
+            
+            if cache_key and cache_key in session_cache:
+                anim_df = session_cache[cache_key]
+                current_time = anim_df.index[time_idx]
+                from .config import STATION_INFO
+                station_id = animation_data.get('station_id', '8415191')
+                station_info = STATION_INFO.get(station_id, STATION_INFO['8415191'])
+                station_name = animation_data.get('station_name', station_info['name'])
+                map_fig = create_presentation_map(anim_df, station_info['lat'], station_info['lon'], current_time, station_name, wind_history_mode='arrows', wind_rose_overlay=True)
+                map_fig.update_layout(uirevision='map-constant', transition={'duration': 0})
+            else:
+                map_fig = dash.no_update
+        except Exception as e:
+            logger.error(f"Error creating map: {e}")
             map_fig = dash.no_update
-    except Exception as e:
-        logger.error(f"Error creating map: {e}")
+    else:
+        map_fig = dash.no_update
         map_fig = dash.no_update
     
     water_chart_patch, wind_chart_patch, time_str, surge_str, wind_str = build_frame_patches(frame)
