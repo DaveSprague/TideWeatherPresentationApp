@@ -8,18 +8,10 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 import logging
 import os
-import math
 import plotly.graph_objects as go
 
-from utils import calculate_arrow_geometry, create_presentation_map, build_wind_rose_traces
+from utils import create_presentation_map
 from components.overlay_panel import create_overlay_panel
-from config import (
-    MIN_WIND_SPEED_DISPLAY,
-    WIND_ARROW_SCALE,
-    WIND_HISTORY_LENGTH,
-    MAP_STYLE,
-    DEFAULT_ZOOM
-)
 from data.loader import DataLoader
 from data.noaa_api import NOAAClient
 from data.processor import SurgeProcessor
@@ -54,40 +46,23 @@ def create_wind_speed_chart(df, current_time, current_data):
     return fig
 
 
-def create_wind_rose_map(df, center_lat, center_lon, current_idx):
-    fig = go.Figure()
-    for trace in build_wind_rose_traces(df, center_lat, center_lon, current_idx):
-        fig.add_trace(trace)
-    if not fig.data:
-        return fig
-    fig.add_trace(go.Scattermap(lat=[center_lat], lon=[center_lon], mode='markers', marker=dict(size=10, color='white'), hoverinfo='skip', showlegend=False))
-    fig.update_layout(map=dict(style=MAP_STYLE, center=dict(lat=center_lat, lon=center_lon), zoom=DEFAULT_ZOOM - 0.5), height=220, margin=dict(l=0, r=0, t=0, b=0), showlegend=False, uirevision='wind-rose')
-    return fig
+def build_frame_patches(frame):
+    """Create chart patches and display strings for a single animation frame."""
+    water_chart_patch = Patch()
+    wind_chart_patch = Patch()
+    water_chart_patch['data'][2]['x'] = [frame['timestamp'], frame['timestamp']]
+    water_chart_patch['data'][3]['x'] = [frame['timestamp']]
+    water_chart_patch['data'][3]['y'] = [frame['water_level']]
+    water_chart_patch['data'][3]['text'] = [f"Water: {frame['water_level']:.1f} ft<br>Surge: {frame['surge']:+.1f} ft"]
+    wind_chart_patch['data'][1]['x'] = [frame['timestamp'], frame['timestamp']]
+    wind_chart_patch['data'][2]['x'] = [frame['timestamp']]
+    wind_chart_patch['data'][2]['y'] = [frame['wind_speed']]
+    wind_chart_patch['data'][2]['text'] = [f"{frame['wind_speed']:.1f} kts @ {frame['wind_dir']:.0f}°"]
+    time_str = frame['timestamp_str']
+    surge_str = f"{frame['surge']:+.2f} ft"
+    wind_str = f"{frame['wind_speed']:.1f} kts @ {frame['wind_dir']:.0f}°"
+    return water_chart_patch, wind_chart_patch, time_str, surge_str, wind_str
 
-
-def create_recent_wind_arrows(df, center_lat, center_lon, current_idx, history_length=10):
-    fig = go.Figure()
-    if df is None or df.empty:
-        return fig
-    start_idx = max(0, current_idx - history_length + 1)
-    history = df.iloc[start_idx:current_idx + 1]
-    if history.empty:
-        return fig
-    total = len(history)
-    for idx, (_, row) in enumerate(history.iterrows()):
-        wind_speed = row.get('wind_speed', 0) or 0
-        wind_dir = row.get('wind_dir_from', 0) or 0
-        if pd.isna(wind_speed) or pd.isna(wind_dir) or wind_speed < MIN_WIND_SPEED_DISPLAY:
-            continue
-        age_factor = idx / max(total - 1, 1)
-        opacity = 0.25 + 0.7 * age_factor
-        line_width = 2 + 2 * age_factor
-        arrow_geom = calculate_arrow_geometry(center_lat=center_lat, center_lon=center_lon, direction_from=wind_dir, magnitude=wind_speed, scale=WIND_ARROW_SCALE, arrowhead_size=0.22, arrowhead_angle=25)
-        fig.add_trace(go.Scattermap(lat=arrow_geom['arrow_lats'], lon=arrow_geom['arrow_lons'], mode='lines', line=dict(color=f'rgba(60, 60, 60, {opacity})', width=line_width), hoverinfo='skip', showlegend=False))
-        fig.add_trace(go.Scattermap(lat=arrow_geom['arrowhead_lats'], lon=arrow_geom['arrowhead_lons'], mode='lines', fill='toself', fillcolor=f'rgba(40, 40, 40, {opacity})', line=dict(color=f'rgba(60, 60, 60, {opacity})', width=line_width * 0.7), hoverinfo='skip', showlegend=False))
-    fig.add_trace(go.Scattermap(lat=[center_lat], lon=[center_lon], mode='markers', marker=dict(size=9, color='white'), hoverinfo='skip', showlegend=False))
-    fig.update_layout(map=dict(style=MAP_STYLE, center=dict(lat=center_lat, lon=center_lon), zoom=DEFAULT_ZOOM - 0.3), height=200, margin=dict(l=0, r=0, t=0, b=0), showlegend=False, uirevision='wind-samples')
-    return fig
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP], suppress_callback_exceptions=True)
 app.title = "Storm Surge Visualization - Presentation Mode"
@@ -224,8 +199,7 @@ def process_data(center_date, stored_data):
             surge_val = row.get('surge', 0)
             wind_spd = row.get('wind_speed', 0)
             wind_dir = row.get('wind_dir_from', 0)
-            arrow_geom = calculate_arrow_geometry(center_lat=center_lat, center_lon=center_lon, direction_from=wind_dir, magnitude=wind_spd, scale=0.002, arrowhead_size=0.25, arrowhead_angle=25)
-            animation_frames.append({'timestamp': ts.isoformat(), 'timestamp_str': ts.strftime('%B %d, %Y %H:%M'), 'surge': surge_val, 'surge_color': SurgeProcessor.get_surge_color(surge_val), 'surge_size': 20 + abs(surge_val) * 8, 'wind_speed': wind_spd, 'wind_dir': wind_dir, 'arrow_lats': arrow_geom['arrow_lats'], 'arrow_lons': arrow_geom['arrow_lons'], 'arrowhead_lats': arrow_geom['arrowhead_lats'], 'arrowhead_lons': arrow_geom['arrowhead_lons'], 'water_level': row.get('water_level', 0), 'predicted': row.get('predicted', 0)})
+            animation_frames.append({'timestamp': ts.isoformat(), 'timestamp_str': ts.strftime('%B %d, %Y %H:%M'), 'surge': surge_val, 'wind_speed': wind_spd, 'wind_dir': wind_dir, 'water_level': row.get('water_level', 0)})
         current_time = anim_df.index[0]
         current_data = anim_df.iloc[0]
         wind_mode = 'arrows'
@@ -280,19 +254,7 @@ def update_time_position(time_idx, animation_data):
     except Exception as e:
         logger.error(f"Error creating map: {e}")
         map_fig = dash.no_update
-    water_chart_patch = Patch()
-    wind_chart_patch = Patch()
-    water_chart_patch['data'][2]['x'] = [frame['timestamp'], frame['timestamp']]
-    water_chart_patch['data'][3]['x'] = [frame['timestamp']]
-    water_chart_patch['data'][3]['y'] = [frame['water_level']]
-    water_chart_patch['data'][3]['text'] = [f"Water: {frame['water_level']:.1f} ft<br>Surge: {frame['surge']:+.1f} ft"]
-    wind_chart_patch['data'][1]['x'] = [frame['timestamp'], frame['timestamp']]
-    wind_chart_patch['data'][2]['x'] = [frame['timestamp']]
-    wind_chart_patch['data'][2]['y'] = [frame['wind_speed']]
-    wind_chart_patch['data'][2]['text'] = [f"{frame['wind_speed']:.1f} kts @ {frame['wind_dir']:.0f}°"]
-    time_str = frame['timestamp_str']
-    surge_str = f"{frame['surge']:+.2f} ft"
-    wind_str = f"{frame['wind_speed']:.1f} kts @ {frame['wind_dir']:.0f}°"
+    water_chart_patch, wind_chart_patch, time_str, surge_str, wind_str = build_frame_patches(frame)
     return (map_fig, water_chart_patch, wind_chart_patch, time_str, surge_str, wind_str)
 
 

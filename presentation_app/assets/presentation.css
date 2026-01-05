@@ -6,6 +6,7 @@
 .time-display{font-size:20px;font-weight:bold;text-align:center;color:#2c3e50;padding:10px;background:rgba(52,152,219,.1);border-radius:8px}
 .stat-label{font-size:11px;text-transform:uppercase;color:#7f8c8d;font-weight:600;margin-bottom:4px}
 .stat-value{font-size:24px;font-weight:bold;color:#2c3e50}
+.wind-value{font-size:20px;line-height:1.15}
 .chart-title{font-weight:600;color:#34495e;text-align:center}
 .step-dropdown .Select-control{height:32px!important;min-height:32px!important}
 .step-dropdown .Select-value{line-height:32px!important}

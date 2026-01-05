@@ -28,11 +28,11 @@ def create_overlay_panel(min_date: Optional[pd.Timestamp] = None,
             dbc.Col([
                 html.Div("Surge", className="stat-label"),
                 html.Div(id='current-surge-value', className="stat-value", children="--")
-            ], width=6),
+            ], width=5),
             dbc.Col([
                 html.Div("Wind", className="stat-label"),
-                html.Div(id='current-wind-value', className="stat-value", children="--")
-            ], width=6),
+                html.Div(id='current-wind-value', className="stat-value wind-value", children="--")
+            ], width=7),
         ], className="mb-3"),
         html.Div([
             dbc.ButtonGroup([
