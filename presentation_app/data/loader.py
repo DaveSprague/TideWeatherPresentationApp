@@ -5,7 +5,7 @@ import pandas as pd
 import logging
 from pathlib import Path
 from typing import Optional
-from validators import validate_tide_data, validate_weather_data, sanitize_numeric_column
+from ..validators import validate_tide_data, validate_weather_data, sanitize_numeric_column
 
 logger = logging.getLogger(__name__)
 
