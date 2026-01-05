@@ -11,11 +11,11 @@ import os
 import uuid
 import plotly.graph_objects as go
 
-from utils import create_presentation_map
-from components.overlay_panel import create_overlay_panel
-from data.loader import DataLoader
-from data.noaa_api import NOAAClient
-from data.processor import SurgeProcessor
+from .utils import create_presentation_map
+from .components.overlay_panel import create_overlay_panel
+from .data.loader import DataLoader
+from .data.noaa_api import NOAAClient
+from .data.processor import SurgeProcessor
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -216,7 +216,7 @@ def process_data(center_date, stored_data, session_id, data_version):
         processor = SurgeProcessor()
         processed_df = processor.calculate_surge_from_predictions(merged_df, predictions, method='pchip')
         anim_df = processor.resample_data(processed_df, interval='15min')
-        from config import STATION_INFO
+        from .config import STATION_INFO
         station_info = STATION_INFO.get(station_id, STATION_INFO['8415191'])
         center_lat = station_info['lat']
         center_lon = station_info['lon']
@@ -290,7 +290,7 @@ def update_time_position(time_idx, animation_data):
         anim_df['dt'] = pd.to_datetime(anim_df['dt'])
         anim_df = anim_df.set_index('dt')
         current_time = anim_df.index[time_idx]
-        from config import STATION_INFO
+        from .config import STATION_INFO
         station_id = animation_data.get('station_id', '8415191')
         station_info = STATION_INFO.get(station_id, STATION_INFO['8415191'])
         station_name = animation_data.get('station_name', station_info['name'])
