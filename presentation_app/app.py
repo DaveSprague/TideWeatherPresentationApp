@@ -103,19 +103,13 @@ def get_initial_dates():
 initial_min, initial_max, initial_center = get_initial_dates()
 
 app.layout = html.Div([
-    dcc.Loading(
-        id='loading-main',
-        type='circle',
-        children=[
-            html.Div([dcc.Graph(id='surge-map', config={'displayModeBar': False}, style={'width': '100%', 'height': '100%'})], style={'height': '70vh', 'width': '100%'}),
-            html.Div([
-                dbc.Row([
-                    dbc.Col([dcc.Graph(id='water-level-chart', config={'displayModeBar': False}, style={'height': '100%'})], width=6, style={'padding': '0 5px'}),
-                    dbc.Col([dcc.Graph(id='wind-speed-chart', config={'displayModeBar': False}, style={'height': '100%'})], width=6, style={'padding': '0 5px'}),
-                ], style={'height': '100%', 'margin': 0})
-            ], style={'height': '30vh', 'width': '100%', 'background': '#f8f9fa', 'padding': '10px 0'}),
-        ]
-    ),
+    html.Div([dcc.Graph(id='surge-map', config={'displayModeBar': False}, animate=False, style={'width': '100%', 'height': '100%'})], style={'height': '70vh', 'width': '100%'}),
+    html.Div([
+        dbc.Row([
+            dbc.Col([dcc.Graph(id='water-level-chart', config={'displayModeBar': False}, animate=False, style={'height': '100%'})], width=6, style={'padding': '0 5px'}),
+            dbc.Col([dcc.Graph(id='wind-speed-chart', config={'displayModeBar': False}, animate=False, style={'height': '100%'})], width=6, style={'padding': '0 5px'}),
+        ], style={'height': '100%', 'margin': 0})
+    ], style={'height': '30vh', 'width': '100%', 'background': '#f8f9fa', 'padding': '10px 0'}),
     create_overlay_panel(min_date=initial_min, max_date=initial_max, center_date=initial_center),
 ], style={'margin': 0, 'padding': 0, 'overflow': 'hidden', 'height': '100vh'})
 
