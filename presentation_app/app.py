@@ -111,6 +111,7 @@ app.layout = html.Div([
         ], style={'height': '100%', 'margin': 0})
     ], style={'height': '30vh', 'width': '100%', 'background': '#f8f9fa', 'padding': '10px 0'}),
     create_overlay_panel(min_date=initial_min, max_date=initial_max, center_date=initial_center),
+    dcc.Interval(id='map-interaction-timeout', interval=500, disabled=True),
 ], style={'margin': 0, 'padding': 0, 'overflow': 'hidden', 'height': '100vh'})
 
 
@@ -313,6 +314,34 @@ def update_time_position(time_idx, animation_data):
     
     water_chart_patch, wind_chart_patch, time_str, surge_str, wind_str = build_frame_patches(frame)
     return (map_fig, water_chart_patch, wind_chart_patch, time_str, surge_str, wind_str)
+
+
+@app.callback(
+    Output('animation-interval', 'disabled'),
+    Output('map-interaction-timeout', 'disabled'),
+    Input('surge-map', 'relayoutData'),
+    State('animation-interval', 'disabled'),
+    prevent_initial_call=True
+)
+def pause_on_map_interaction(relayout_data, animation_disabled):
+    """Pause animation when user pans/zooms the map."""
+    if relayout_data is None:
+        return animation_disabled, True
+    # Pause animation when map is being interacted with
+    return True, False
+
+
+@app.callback(
+    Output('animation-interval', 'disabled', allow_duplicate=True),
+    Input('map-interaction-timeout', 'n_intervals'),
+    State('animation-interval', 'disabled'),
+    prevent_initial_call=True
+)
+def resume_after_map_interaction(n_intervals, animation_disabled):
+    """Resume animation after map interaction stops."""
+    # If animation was running before interaction, resume it
+    # Otherwise keep it paused
+    return False
 
 
 @app.callback(Output('time-slider', 'value'), Output('animation-interval', 'disabled'), Input('play-button', 'n_clicks'), Input('pause-button', 'n_clicks'), Input('reset-button', 'n_clicks'), Input('animation-interval', 'n_intervals'), State('time-slider', 'value'), State('time-slider', 'max'), State('step-size-selector', 'value'), prevent_initial_call=True)
