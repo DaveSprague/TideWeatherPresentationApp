@@ -5,7 +5,7 @@
             "name": "Python: Dash App",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/presentation_app/app.py",
+            "module": "presentation_app.app",
             "console": "integratedTerminal",
             "justMyCode": true,
             "env": {
