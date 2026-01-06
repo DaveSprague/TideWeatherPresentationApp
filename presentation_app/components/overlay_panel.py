@@ -42,7 +42,7 @@ def create_overlay_panel(min_date: Optional[pd.Timestamp] = None,
             ], className="mb-2 w-100")
         ]),
         html.Div([
-            dcc.Slider(id='time-slider', min=0, max=100, value=0, marks={}, tooltip={"placement": "bottom", "always_visible": False}, updatemode='drag', className="mb-2")
+            dcc.Slider(id='time-slider', min=0, max=100, value=0, step=1, marks={}, tooltip={"placement": "bottom", "always_visible": False}, updatemode='drag', className="mb-2")
         ]),
         dbc.Row([
             dbc.Col([
