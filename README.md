@@ -76,6 +76,20 @@ docker run -e PORT=8052 -p 8052:8052 presentation-app
 
 Gunicorn will bind to `0.0.0.0:$PORT` and Dash will serve `app:server`.
 
+## Configuration
+- `CACHE_ENABLED`: enable LRU+TTL cache (`1` to enable, default `1`).
+- `CACHE_MAX_SIZE`: maximum cache entries (default `32`).
+- `CACHE_TTL_SECONDS`: time-to-live in seconds (default `900`).
+
+Example:
+```bash
+export CACHE_ENABLED=1
+export CACHE_MAX_SIZE=64
+export CACHE_TTL_SECONDS=600
+export PORT=8053
+python app.py
+```
+
 ## Notes
 - Default center date set to 2024-01-10; window clamps to available data if needed.
 - NOAA predictions fetched with small buffer for interpolation; falls back to nearby stations if needed.

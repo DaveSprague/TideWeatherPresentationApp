@@ -1,6 +1,7 @@
 """
 Standalone Presentation App Configuration
 """
+import os
 
 # Station info
 STATION_INFO = {
@@ -55,3 +56,10 @@ PREDICTION_BUFFER_DAYS = 2
 
 # Processing
 TIDAL_WINDOW = '25h'
+DATA_WINDOW_HOURS = 18  # Hours before/after center date for data window
+SLIDER_MARK_STRIDE = 8  # Show every Nth midnight mark on slider
+
+# Caching
+CACHE_ENABLED = os.getenv('CACHE_ENABLED', '1') == '1'
+CACHE_MAX_SIZE = int(os.getenv('CACHE_MAX_SIZE', '32'))
+CACHE_TTL_SECONDS = int(os.getenv('CACHE_TTL_SECONDS', '900'))  # 15 minutes default

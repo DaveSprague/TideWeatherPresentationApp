@@ -4,7 +4,7 @@ CSV data loading utilities (standalone)
 import pandas as pd
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 from ..validators import validate_tide_data, validate_weather_data, sanitize_numeric_column
 
 logger = logging.getLogger(__name__)
@@ -12,6 +12,31 @@ logger = logging.getLogger(__name__)
 
 class DataLoader:
     """Handles loading and initial processing of CSV data"""
+    
+    @staticmethod
+    def parse_raw_dataframes(tide_df: pd.DataFrame, weather_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """Parse raw tide and weather DataFrames, adding datetime index."""
+        tide_parsed = tide_df.copy()
+        weather_parsed = weather_df.copy()
+        tide_parsed['dt'] = pd.to_datetime(tide_parsed['timestring'], errors='coerce')
+        weather_parsed['dt'] = pd.to_datetime(weather_parsed['timestring'], errors='coerce')
+        return tide_parsed, weather_parsed
+    
+    @staticmethod
+    def filter_by_window(tide_raw: pd.DataFrame, weather_raw: pd.DataFrame, 
+                        start_dt: pd.Timestamp, end_dt: pd.Timestamp) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """Filter and prepare tide/weather data for a specific time window."""
+        tide_df_local = tide_raw.set_index('dt')[['water_level']]
+        tide_df_local['water_level'] = pd.to_numeric(tide_df_local['water_level'], errors='coerce')
+        tide_df_local = tide_df_local[(tide_df_local.index >= start_dt) & (tide_df_local.index <= end_dt)].dropna()
+        
+        weather_df_local = weather_raw.set_index('dt')
+        weather_df_local = weather_df_local[(weather_df_local.index >= start_dt) & (weather_df_local.index <= end_dt)]
+        for col in ['wind_speed', 'wind_dir_from', 'pressure']:
+            weather_df_local[col] = pd.to_numeric(weather_df_local[col], errors='coerce')
+        weather_df_local = weather_df_local[['wind_speed', 'wind_dir_from', 'pressure']].dropna()
+        
+        return tide_df_local, weather_df_local
     
     @staticmethod
     def load_tide_csv(file_path: Path, start_date: Optional[pd.Timestamp] = None, 

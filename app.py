@@ -16,10 +16,46 @@ from presentation_app.components.overlay_panel import create_overlay_panel
 from presentation_app.data.loader import DataLoader
 from presentation_app.data.noaa_api import NOAAClient
 from presentation_app.data.processor import SurgeProcessor
-from presentation_app.config import STATION_INFO
+from presentation_app.cache import LRUCacheTTL
+from presentation_app.config import STATION_INFO, CACHE_ENABLED, CACHE_MAX_SIZE, CACHE_TTL_SECONDS, DATA_WINDOW_HOURS, SLIDER_MARK_STRIDE
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+# Cache wrapper functions
+def cache_get(key):
+    """Unified cache get supporting both dict and LRU cache."""
+    return session_cache.get(key) if hasattr(session_cache, 'get') else None
+
+
+def cache_set(key, value):
+    """Unified cache set supporting both dict and LRU cache."""
+    if isinstance(session_cache, dict):
+        session_cache[key] = value
+    else:
+        session_cache.set(key, value)
+
+
+def create_empty_figure(title: str = "No data"):
+    """Factory for empty/error figure."""
+    return {'data': [], 'layout': {'title': title}}
+
+
+def generate_slider_marks(datetimes: pd.DatetimeIndex) -> dict:
+    """Generate slider marks from DatetimeIndex, showing midnights with stride."""
+    marks = {}
+    midnight_idxs = [i for i, ts in enumerate(datetimes) if ts.hour == 0 and ts.minute == 0]
+    if midnight_idxs:
+        stride = max(1, len(midnight_idxs) // SLIDER_MARK_STRIDE)
+        for pos in midnight_idxs[::stride]:
+            marks[pos] = datetimes[pos].strftime('%b %d')
+    if not marks:
+        stride = max(1, len(datetimes) // SLIDER_MARK_STRIDE)
+        for i in range(0, len(datetimes), stride):
+            marks[i] = datetimes[i].strftime('%m/%d %H:%M')
+    marks[len(datetimes) - 1] = datetimes[-1].strftime('%b %d')
+    return marks
 
 
 def create_water_level_chart(df, current_time, current_data):
@@ -70,7 +106,8 @@ app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.
 app.title = "Storm Surge Visualization - Presentation Mode"
 server = app.server  # Expose Flask server for gunicorn
 app_data = {'tide_df': None,'weather_df': None,'station_id': '8415191'}
-session_cache = {}
+# In-memory cache: LRU + TTL when enabled, plain dict otherwise
+session_cache = LRUCacheTTL(max_size=CACHE_MAX_SIZE, ttl_seconds=CACHE_TTL_SECONDS) if CACHE_ENABLED else {}
 
 try:
     tide_df = pd.read_csv('tide_belfast.csv', comment='#', header=None, names=['timestamp', 'timestring', 'water_level'])
@@ -86,10 +123,8 @@ except Exception as e:
 def get_initial_dates():
     if app_data['tide_df'] is not None and app_data['weather_df'] is not None:
         try:
-            tide_df = app_data['tide_df'].copy()
-            weather_df = app_data['weather_df'].copy()
-            tide_df['dt'] = pd.to_datetime(tide_df['timestring'], errors='coerce')
-            weather_df['dt'] = pd.to_datetime(weather_df['timestring'], errors='coerce')
+            loader = DataLoader()
+            tide_df, weather_df = loader.parse_raw_dataframes(app_data['tide_df'], app_data['weather_df'])
             min_date_overlap = max(tide_df['dt'].min(), weather_df['dt'].min())
             max_date_overlap = min(tide_df['dt'].max(), weather_df['dt'].max())
             forced_center = pd.Timestamp('2024-01-10')
@@ -145,10 +180,8 @@ def load_sample_data(n_clicks):
     if app_data['tide_df'] is None or app_data['weather_df'] is None:
         return dash.no_update
     try:
-        tide_df = app_data['tide_df'].copy()
-        weather_df = app_data['weather_df'].copy()
-        tide_df['dt'] = pd.to_datetime(tide_df['timestring'], errors='coerce')
-        weather_df['dt'] = pd.to_datetime(weather_df['timestring'], errors='coerce')
+        loader = DataLoader()
+        tide_df, weather_df = loader.parse_raw_dataframes(app_data['tide_df'], app_data['weather_df'])
         min_date = max(tide_df['dt'].min(), weather_df['dt'].min())
         max_date = min(tide_df['dt'].max(), weather_df['dt'].max())
         center_date = min_date + (max_date - min_date) / 2
@@ -167,46 +200,32 @@ def load_sample_data(n_clicks):
      Output('time-slider', 'marks'),
      Output('animation-data-store', 'data')],
     Input('center-date-picker', 'date'),
-    State('data-store', 'data'),
     State('session-id', 'data'),
     State('data-version', 'data')
 )
-def process_data(center_date, stored_data, session_id, data_version):
+def process_data(center_date, session_id, data_version):
     if app_data['tide_df'] is None or app_data['weather_df'] is None:
-        empty_fig = {'data': [], 'layout': {'title': 'Upload data to begin'}}
+        empty_fig = create_empty_figure('Upload data to begin')
         return empty_fig, empty_fig, empty_fig, "No data", 0, {}, None
     try:
         session_token = session_id or str(uuid.uuid4())
         cache_key = (session_token, str(center_date), data_version or 0)
-        cached = session_cache.get(cache_key)
+        cached = cache_get(cache_key)
         if cached:
             return cached
         center_dt = pd.to_datetime(center_date)
-        start_dt = center_dt - pd.Timedelta(hours=18)
-        end_dt = center_dt + pd.Timedelta(hours=18)
+        start_dt = center_dt - pd.Timedelta(hours=DATA_WINDOW_HOURS)
+        end_dt = center_dt + pd.Timedelta(hours=DATA_WINDOW_HOURS)
         loader = DataLoader()
-        tide_raw = app_data['tide_df'].copy()
-        weather_raw = app_data['weather_df'].copy()
-        tide_raw['dt'] = pd.to_datetime(tide_raw['timestring'], errors='coerce')
-        weather_raw['dt'] = pd.to_datetime(weather_raw['timestring'], errors='coerce')
+        tide_raw, weather_raw = loader.parse_raw_dataframes(app_data['tide_df'], app_data['weather_df'])
         available_min = max(tide_raw['dt'].min(), weather_raw['dt'].min())
         available_max = min(tide_raw['dt'].max(), weather_raw['dt'].max())
-        def build_filtered_frames(start_ts, end_ts):
-            tide_df_local = tide_raw.set_index('dt')[['water_level']]
-            tide_df_local['water_level'] = pd.to_numeric(tide_df_local['water_level'], errors='coerce')
-            tide_df_local = tide_df_local[(tide_df_local.index >= start_ts) & (tide_df_local.index <= end_ts)].dropna()
-            weather_df_local = weather_raw.set_index('dt')
-            weather_df_local = weather_df_local[(weather_df_local.index >= start_ts) & (weather_df_local.index <= end_ts)]
-            for col in ['wind_speed', 'wind_dir_from', 'pressure']:
-                weather_df_local[col] = pd.to_numeric(weather_df_local[col], errors='coerce')
-            weather_df_local = weather_df_local[['wind_speed', 'wind_dir_from', 'pressure']].dropna()
-            return tide_df_local, weather_df_local
-        tide_df, weather_df = build_filtered_frames(start_dt, end_dt)
+        tide_df, weather_df = loader.filter_by_window(tide_raw, weather_raw, start_dt, end_dt)
         if tide_df.empty or weather_df.empty:
             center_dt = min(max(center_dt, available_min), available_max)
-            start_dt = center_dt - pd.Timedelta(hours=18)
-            end_dt = center_dt + pd.Timedelta(hours=18)
-            tide_df, weather_df = build_filtered_frames(start_dt, end_dt)
+            start_dt = center_dt - pd.Timedelta(hours=DATA_WINDOW_HOURS)
+            end_dt = center_dt + pd.Timedelta(hours=DATA_WINDOW_HOURS)
+            tide_df, weather_df = loader.filter_by_window(tide_raw, weather_raw, start_dt, end_dt)
         merged_df = loader.merge_datasets(tide_df, weather_df)
         if merged_df.empty:
             raise ValueError("No data after merging")
@@ -234,17 +253,7 @@ def process_data(center_date, stored_data, session_id, data_version):
         map_fig = create_presentation_map(anim_df, center_lat, center_lon, current_time, station_name, wind_history_mode=wind_mode, wind_rose_overlay=True)
         water_chart = create_water_level_chart(anim_df, current_time, current_data)
         wind_chart = create_wind_speed_chart(anim_df, current_time, current_data)
-        marks = {}
-        midnight_idxs = [i for i, ts in enumerate(anim_df.index) if ts.hour == 0 and ts.minute == 0]
-        if midnight_idxs:
-            stride = max(1, len(midnight_idxs) // 8)
-            for pos in midnight_idxs[::stride]:
-                marks[pos] = anim_df.index[pos].strftime('%b %d')
-        if not marks:
-            stride = max(1, len(anim_df) // 8)
-            for i in range(0, len(anim_df), stride):
-                marks[i] = anim_df.index[i].strftime('%m/%d %H:%M')
-        marks[len(anim_df) - 1] = anim_df.index[-1].strftime('%b %d')
+        marks = generate_slider_marks(anim_df.index)
         anim_records = anim_df.reset_index().rename(columns={'index': 'dt'})
         anim_records['dt'] = anim_records['dt'].dt.strftime('%Y-%m-%dT%H:%M:%S')
         animation_store = {
@@ -259,13 +268,12 @@ def process_data(center_date, stored_data, session_id, data_version):
             'cache_key': str(cache_key)
         }
         result = (map_fig, water_chart, wind_chart, station_name, len(anim_df) - 1, marks, animation_store)
-        session_cache[cache_key] = result
-        # Also cache the DataFrame for quick map updates
-        session_cache[f"{cache_key}_df"] = anim_df
+        cache_set(cache_key, result)
+        cache_set(f"{cache_key}_df", anim_df)
         return result
     except Exception as e:
         logger.error(f"Error processing data: {e}", exc_info=True)
-        empty_fig = {'data': [], 'layout': {'title': f'Error: {str(e)}'}}
+        empty_fig = create_empty_figure(f'Error: {str(e)}')
         return empty_fig, empty_fig, empty_fig, "Error", 0, {}, None
 
 
@@ -292,16 +300,17 @@ def update_time_position(time_idx, animation_data):
     try:
         # Get the cache key from animation data to ensure we're using the right date's data
         stored_cache_key = animation_data.get('cache_key')
+        df_cache_key = None
         if stored_cache_key:
-            # Convert string back to tuple
             import ast
             cache_key_tuple = ast.literal_eval(stored_cache_key)
             df_cache_key = f"{cache_key_tuple}_df"
-        else:
-            df_cache_key = None
-        
-        if df_cache_key and df_cache_key in session_cache:
-            anim_df = session_cache[df_cache_key]
+
+        anim_df = None
+        if df_cache_key:
+            anim_df = cache_get(df_cache_key)
+
+        if anim_df is not None:
             # Make sure time_idx is within bounds
             if time_idx >= len(anim_df):
                 time_idx = len(anim_df) - 1
@@ -316,7 +325,6 @@ def update_time_position(time_idx, animation_data):
             map_fig = dash.no_update
     except Exception as e:
         logger.error(f"Error creating map: {e}")
-        map_fig = dash.no_update
         map_fig = dash.no_update
     
     water_chart_patch, wind_chart_patch, time_str, surge_str, wind_str = build_frame_patches(frame)
