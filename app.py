@@ -1,6 +1,6 @@
 """
 Standalone Presentation-Mode Storm Surge Visualization
-Run: python -m presentation_app.app
+Run: python app.py
 """
 import dash
 from dash import dcc, html, Input, Output, State, Patch
@@ -11,11 +11,12 @@ import os
 import uuid
 import plotly.graph_objects as go
 
-from .utils import create_presentation_map
-from .components.overlay_panel import create_overlay_panel
-from .data.loader import DataLoader
-from .data.noaa_api import NOAAClient
-from .data.processor import SurgeProcessor
+from presentation_app.utils import create_presentation_map
+from presentation_app.components.overlay_panel import create_overlay_panel
+from presentation_app.data.loader import DataLoader
+from presentation_app.data.noaa_api import NOAAClient
+from presentation_app.data.processor import SurgeProcessor
+from presentation_app.config import STATION_INFO
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -181,8 +182,8 @@ def process_data(center_date, stored_data, session_id, data_version):
         if cached:
             return cached
         center_dt = pd.to_datetime(center_date)
-        start_dt = center_dt - pd.Timedelta(days=2)
-        end_dt = center_dt + pd.Timedelta(days=2)
+        start_dt = center_dt - pd.Timedelta(hours=18)
+        end_dt = center_dt + pd.Timedelta(hours=18)
         loader = DataLoader()
         tide_raw = app_data['tide_df'].copy()
         weather_raw = app_data['weather_df'].copy()
@@ -203,8 +204,8 @@ def process_data(center_date, stored_data, session_id, data_version):
         tide_df, weather_df = build_filtered_frames(start_dt, end_dt)
         if tide_df.empty or weather_df.empty:
             center_dt = min(max(center_dt, available_min), available_max)
-            start_dt = center_dt - pd.Timedelta(days=2)
-            end_dt = center_dt + pd.Timedelta(days=2)
+            start_dt = center_dt - pd.Timedelta(hours=18)
+            end_dt = center_dt + pd.Timedelta(hours=18)
             tide_df, weather_df = build_filtered_frames(start_dt, end_dt)
         merged_df = loader.merge_datasets(tide_df, weather_df)
         if merged_df.empty:
@@ -217,7 +218,6 @@ def process_data(center_date, stored_data, session_id, data_version):
         processor = SurgeProcessor()
         processed_df = processor.calculate_surge_from_predictions(merged_df, predictions, method='pchip')
         anim_df = processor.resample_data(processed_df, interval='15min')
-        from .config import STATION_INFO
         station_info = STATION_INFO.get(station_id, STATION_INFO['8415191'])
         center_lat = station_info['lat']
         center_lon = station_info['lon']
@@ -298,7 +298,6 @@ def update_time_position(time_idx, animation_data):
         if cache_key and cache_key in session_cache:
             anim_df = session_cache[cache_key]
             current_time = anim_df.index[time_idx]
-            from .config import STATION_INFO
             station_id = animation_data.get('station_id', '8415191')
             station_info = STATION_INFO.get(station_id, STATION_INFO['8415191'])
             station_name = animation_data.get('station_name', station_info['name'])

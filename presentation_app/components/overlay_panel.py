@@ -67,7 +67,7 @@ def create_overlay_panel(min_date: Optional[pd.Timestamp] = None,
                 ], className="mb-2"),
                 dbc.Button("Use Sample Data", id='load-sample-data', color="secondary", size="sm", className="w-100 mb-2"),
                 html.Div([
-                    html.Label("Center Date (±2 days)", className="small mb-1"),
+                    html.Label("Center Date (±18 hours)", className="small mb-1"),
                     dcc.DatePickerSingle(id='center-date-picker', min_date_allowed=min_date, max_date_allowed=max_date, date=center_date, className="w-100")
                 ])
             ], title="Data & Settings", className="small")

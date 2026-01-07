@@ -6,7 +6,7 @@
             "type": "shell",
             "command": "${workspaceFolder}/.venv/bin/python",
             "args": [
-                "presentation_app/app.py"
+                "app.py"
             ],
             "problemMatcher": [],
             "presentation": {
