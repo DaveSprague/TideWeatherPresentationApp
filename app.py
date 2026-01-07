@@ -255,7 +255,8 @@ def process_data(center_date, stored_data, session_id, data_version):
             'station_name': station_name,
             'station_id': station_id,
             'water_level_min': float(anim_df['water_level'].min()) - 1,
-            'water_level_max': float(anim_df['water_level'].max()) + 1
+            'water_level_max': float(anim_df['water_level'].max()) + 1,
+            'cache_key': str(cache_key)
         }
         result = (map_fig, water_chart, wind_chart, station_name, len(anim_df) - 1, marks, animation_store)
         session_cache[cache_key] = result
@@ -289,19 +290,27 @@ def update_time_position(time_idx, animation_data):
     
     # Rebuild DataFrame from cache for map updates
     try:
-        cache_key = None
-        for key in session_cache.keys():
-            if isinstance(key, str) and key.endswith('_df'):
-                cache_key = key
-                break
+        # Get the cache key from animation data to ensure we're using the right date's data
+        stored_cache_key = animation_data.get('cache_key')
+        if stored_cache_key:
+            # Convert string back to tuple
+            import ast
+            cache_key_tuple = ast.literal_eval(stored_cache_key)
+            df_cache_key = f"{cache_key_tuple}_df"
+        else:
+            df_cache_key = None
         
-        if cache_key and cache_key in session_cache:
-            anim_df = session_cache[cache_key]
+        if df_cache_key and df_cache_key in session_cache:
+            anim_df = session_cache[df_cache_key]
+            # Make sure time_idx is within bounds
+            if time_idx >= len(anim_df):
+                time_idx = len(anim_df) - 1
             current_time = anim_df.index[time_idx]
+            current_data = anim_df.iloc[time_idx]
             station_id = animation_data.get('station_id', '8415191')
             station_info = STATION_INFO.get(station_id, STATION_INFO['8415191'])
             station_name = animation_data.get('station_name', station_info['name'])
-            map_fig = create_presentation_map(anim_df, station_info['lat'], station_info['lon'], current_time, station_name, wind_history_mode='arrows', wind_rose_overlay=True)
+            map_fig = create_presentation_map(anim_df, station_info['lat'], station_info['lon'], current_time, station_name, wind_history_mode='arrows', wind_rose_overlay=True, current_idx=time_idx, current_data=current_data)
             map_fig.update_layout(uirevision='map-constant', transition={'duration': 0})
         else:
             map_fig = dash.no_update

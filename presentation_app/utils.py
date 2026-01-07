@@ -103,16 +103,17 @@ def build_wind_rose_traces(df: pd.DataFrame, center_lat: float, center_lon: floa
     return traces
 
 
-def create_presentation_map(df: pd.DataFrame, center_lat: float, center_lon: float, current_time: Optional[pd.Timestamp] = None, station_name: str = "Belfast Harbor", wind_history_mode: str = 'arrows', history_length: int = 6, wind_rose_overlay: bool = False) -> go.Figure:
+def create_presentation_map(df: pd.DataFrame, center_lat: float, center_lon: float, current_time: Optional[pd.Timestamp] = None, station_name: str = "Belfast Harbor", wind_history_mode: str = 'arrows', history_length: int = 6, wind_rose_overlay: bool = False, current_idx: Optional[int] = None, current_data: Optional[pd.Series] = None) -> go.Figure:
     if current_time is None:
         current_time = df.index[0]
-    if current_time in df.index:
-        current_data = df.loc[current_time]
-        current_idx = df.index.get_loc(current_time)
-    else:
-        current_data = df.iloc[0]
-        current_time = df.index[0]
-        current_idx = 0
+    if current_idx is None or current_data is None:
+        if current_time in df.index:
+            current_data = df.loc[current_time]
+            current_idx = df.index.get_loc(current_time)
+        else:
+            current_data = df.iloc[0]
+            current_time = df.index[0]
+            current_idx = 0
     fig = go.Figure()
     if wind_rose_overlay:
         for trace in build_wind_rose_traces(df, center_lat, center_lon, current_idx):
@@ -123,6 +124,7 @@ def create_presentation_map(df: pd.DataFrame, center_lat: float, center_lon: flo
     fig.add_trace(go.Scattermap(lat=[center_lat], lon=[center_lon], mode='markers', marker=dict(size=marker_size, color=surge_color, opacity=0.7, symbol='circle'), text=f"Surge: {surge_value:+.2f} ft", hovertemplate='<b>%{text}</b><br>Time: %{x}<extra></extra>', name='Surge'))
     wind_speed = current_data.get('wind_speed', 0)
     wind_dir = current_data.get('wind_dir_from', 0)
+
     if wind_speed >= MIN_WIND_SPEED_DISPLAY:
         arrow = calculate_arrow_geometry(center_lat, center_lon, wind_dir, wind_speed, scale=WIND_ARROW_SCALE, arrowhead_size=0.25, arrowhead_angle=25)
         fig.add_trace(go.Scattermap(lat=arrow['arrow_lats'], lon=arrow['arrow_lons'], mode='lines', line=dict(color='black', width=4), opacity=1.0, hoverinfo='skip', showlegend=False))
