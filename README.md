@@ -2,19 +2,93 @@
 
 A self-contained Dash app for presenting storm surge and wind data for Belfast, Maine. This package is split from the parent workspace and includes all its own dependencies and deployment files.
 
-## Quick Start
+## Getting Started
 
-- Python: 3.12 recommended
+### Prerequisites
+- **Python 3.12+** (recommended)
+- **Git** (for cloning the repository)
+- **VS Code** (optional, but recommended)
 
-```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-python app.py
-```
+### Option 1: Clone with Git
 
-Open http://localhost:8052 (or whatever `PORT` you set)
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/DaveSprague/TideWeatherPresentationApp.git
+   cd TideWeatherPresentationApp
+   ```
+
+2. **Create and activate virtual environment**
+   ```bash
+   # macOS/Linux
+   python3.12 -m venv .venv
+   source .venv/bin/activate
+   
+   # Windows
+   python -m venv .venv
+   .venv\Scripts\activate
+   ```
+
+3. **Install dependencies**
+   ```bash
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+4. **Run the app**
+   ```bash
+   python app.py
+   ```
+
+5. **Open in browser**
+   
+   Navigate to http://localhost:8052
+
+### Option 2: Clone with VS Code
+
+1. **Open VS Code** and press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux)
+
+2. **Type "Git: Clone"** and press Enter
+
+3. **Paste the repository URL**
+   ```
+   https://github.com/DaveSprague/TideWeatherPresentationApp.git
+   ```
+
+4. **Choose a local folder** where you want to save the project
+
+5. **Open the cloned repository** when prompted
+
+6. **Create virtual environment**
+   - Open the integrated terminal (`Ctrl+`\` or View → Terminal)
+   - Run:
+     ```bash
+     python3.12 -m venv .venv
+     ```
+
+7. **Select Python interpreter**
+   - Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux)
+   - Type "Python: Select Interpreter"
+   - Choose the interpreter from `.venv` (should show `./venv/bin/python`)
+
+8. **Install dependencies**
+   - VS Code should prompt you to install dependencies
+   - Or manually run in terminal:
+     ```bash
+     pip install --upgrade pip
+     pip install -r requirements.txt
+     ```
+
+9. **Run the app**
+   - Press `F5` to run with debugger, or
+   - Use the "Run Dash App" task from the task menu, or
+   - Run in terminal:
+     ```bash
+     python app.py
+     ```
+
+10. **Open in browser**
+    
+    VS Code may open it automatically, or navigate to http://localhost:8052
 
 ## Features
 - Map via Plotly `Scattermap` (Maplibre), no token required
