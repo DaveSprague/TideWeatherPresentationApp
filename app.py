@@ -323,8 +323,20 @@ def update_time_position(time_idx, animation_data):
     return (map_fig, water_chart_patch, wind_chart_patch, time_str, surge_str, wind_str)
 
 
-@app.callback(Output('time-slider', 'value'), Output('animation-interval', 'disabled'), Input('play-button', 'n_clicks'), Input('pause-button', 'n_clicks'), Input('reset-button', 'n_clicks'), Input('animation-interval', 'n_intervals'), State('time-slider', 'value'), State('time-slider', 'max'), State('step-size-selector', 'value'), prevent_initial_call=True)
-def control_animation(play_clicks, pause_clicks, reset_clicks, n_intervals, current_value, max_value, step_size):
+@app.callback(
+    Output('time-slider', 'value'),
+    Output('animation-interval', 'disabled'),
+    Input('play-button', 'n_clicks'),
+    Input('pause-button', 'n_clicks'),
+    Input('reset-button', 'n_clicks'),
+    Input('animation-interval', 'n_intervals'),
+    Input('time-slider', 'value'),  # Pause when user moves the slider
+    State('time-slider', 'value'),
+    State('time-slider', 'max'),
+    State('step-size-selector', 'value'),
+    prevent_initial_call=True
+)
+def control_animation(play_clicks, pause_clicks, reset_clicks, n_intervals, slider_value, current_value, max_value, step_size):
     ctx = dash.callback_context
     if not ctx.triggered:
         return dash.no_update, True
@@ -340,6 +352,9 @@ def control_animation(play_clicks, pause_clicks, reset_clicks, n_intervals, curr
         if new_value >= max_value:
             return max_value, True
         return new_value, False
+    elif 'time-slider' in trigger:
+        # User manually adjusted the slider; pause animation and keep slider value
+        return slider_value, True
     return dash.no_update, True
 
 

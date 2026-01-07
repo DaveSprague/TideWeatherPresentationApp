@@ -47,7 +47,7 @@ def create_overlay_panel(min_date: Optional[pd.Timestamp] = None,
         dbc.Row([
             dbc.Col([
                 html.Label("Speed", className="small mb-1"),
-                dcc.Slider(id='speed-slider', min=50, max=1000, value=250, marks={50: '20/s', 500: '2/s', 1000: '1/s'}, tooltip={"placement": "bottom"})
+                dcc.Slider(id='speed-slider', min=50, max=1000, value=500, marks={50: '20/s', 500: '2/s', 1000: '1/s'}, tooltip={"placement": "bottom"})
             ], width=7),
             dbc.Col([
                 html.Label("Step", className="small mb-1"),
@@ -72,7 +72,7 @@ def create_overlay_panel(min_date: Optional[pd.Timestamp] = None,
                 ])
             ], title="Data & Settings", className="small")
         ], start_collapsed=True, flush=True),
-        dcc.Interval(id='animation-interval', interval=250, disabled=True),
+        dcc.Interval(id='animation-interval', interval=500, disabled=True),
         # Session-scoped stores so each browser tab keeps its own data
         dcc.Store(id='data-store', storage_type='session'),
         dcc.Store(id='animation-data-store', storage_type='session'),
