@@ -198,7 +198,10 @@ def load_sample_data(n_clicks):
      Output('station-name-display', 'children'),
      Output('time-slider', 'max'),
      Output('time-slider', 'marks'),
-     Output('animation-data-store', 'data')],
+     Output('animation-data-store', 'data'),
+     Output('current-time-display', 'children'),
+     Output('current-surge-value', 'children'),
+     Output('current-wind-value', 'children')],
     Input('center-date-picker', 'date'),
     State('session-id', 'data'),
     State('data-version', 'data')
@@ -206,7 +209,7 @@ def load_sample_data(n_clicks):
 def process_data(center_date, session_id, data_version):
     if app_data['tide_df'] is None or app_data['weather_df'] is None:
         empty_fig = create_empty_figure('Upload data to begin')
-        return empty_fig, empty_fig, empty_fig, "No data", 0, {}, None
+        return empty_fig, empty_fig, empty_fig, "No data", 0, {}, None, "--:--", "--", "--"
     try:
         session_token = session_id or str(uuid.uuid4())
         cache_key = (session_token, str(center_date), data_version or 0)
@@ -267,23 +270,30 @@ def process_data(center_date, session_id, data_version):
             'water_level_max': float(anim_df['water_level'].max()) + 1,
             'cache_key': str(cache_key)
         }
-        result = (map_fig, water_chart, wind_chart, station_name, len(anim_df) - 1, marks, animation_store)
+        
+        # Get initial frame values for display
+        first_frame = animation_frames[0]
+        time_str = first_frame['timestamp_str']
+        surge_str = f"{first_frame['surge']:.2f} ft"
+        wind_str = f"{first_frame['wind_speed']:.1f} mph @ {first_frame['wind_dir']:.0f}°"
+        
+        result = (map_fig, water_chart, wind_chart, station_name, len(anim_df) - 1, marks, animation_store, time_str, surge_str, wind_str)
         cache_set(cache_key, result)
         cache_set(f"{cache_key}_df", anim_df)
         return result
     except Exception as e:
         logger.error(f"Error processing data: {e}", exc_info=True)
         empty_fig = create_empty_figure(f'Error: {str(e)}')
-        return empty_fig, empty_fig, empty_fig, "Error", 0, {}, None
+        return empty_fig, empty_fig, empty_fig, "Error", 0, {}, None, "--:--", "--", "--"
 
 
 @app.callback(
     [Output('surge-map', 'figure', allow_duplicate=True),
      Output('water-level-chart', 'figure', allow_duplicate=True),
      Output('wind-speed-chart', 'figure', allow_duplicate=True),
-     Output('current-time-display', 'children'),
-     Output('current-surge-value', 'children'),
-     Output('current-wind-value', 'children')],
+     Output('current-time-display', 'children', allow_duplicate=True),
+     Output('current-surge-value', 'children', allow_duplicate=True),
+     Output('current-wind-value', 'children', allow_duplicate=True)],
     Input('time-slider', 'value'),
     State('animation-data-store', 'data'),
     prevent_initial_call=True
