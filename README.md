@@ -11,7 +11,7 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
-python -m presentation_app.app
+python app.py
 ```
 
 Open http://localhost:8052 (or whatever `PORT` you set)
@@ -56,32 +56,25 @@ presentation_app_standalone/
 - `requirements.txt` includes `gunicorn`.
 - `Procfile` already present:
 ```
-web: gunicorn -w 2 -k gthread -b 0.0.0.0:$PORT presentation_app.app:app.server
+web: gunicorn -w 2 -k gthread -b 0.0.0.0:$PORT app:server
 ```
 
 Deploy steps (Render-style):
 1) Push to GitHub
 2) Create a new Web Service from this repo
-3) Set `Start command` to use the Procfile (Render auto-detects) or explicitly `gunicorn -w 2 -k gthread -b 0.0.0.0:$PORT presentation_app.app:app.server`
+3) Set `Start command` to use the Procfile (Render auto-detects) or explicitly `gunicorn -w 2 -k gthread -b 0.0.0.0:$PORT app:server`
 4) Ensure `PORT` env var is provided by the platform (Render/Heroku/Railway do this automatically)
 
 ### Docker
-```Dockerfile
-FROM python:3.12-slim
-WORKDIR /app
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-ENV PORT=8052
-EXPOSE 8052
-CMD ["gunicorn","-w","2","-k","gthread","-b","0.0.0.0:${PORT}","presentation_app.app:app.server"]
-```
+The Dockerfile in this repo is configured for platforms that inject `$PORT` (e.g., DigitalOcean App Platform). To run locally:
 
-Build and run:
 ```bash
 docker build -t presentation-app .
-docker run -p 8052:8052 -e PORT=8052 presentation-app
+# Pick a local port and pass it in
+docker run -e PORT=8052 -p 8052:8052 presentation-app
 ```
+
+Gunicorn will bind to `0.0.0.0:$PORT` and Dash will serve `app:server`.
 
 ## Notes
 - Default center date set to 2024-01-10; window clamps to available data if needed.
