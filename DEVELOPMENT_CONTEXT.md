@@ -1,6 +1,6 @@
 # Storm Surge Visualization App - Development Context
 
-**Last Updated:** January 5, 2026
+**Last Updated:** January 7, 2026
 
 ## Project Overview
 
@@ -36,8 +36,15 @@ A Dash/Plotly web application for visualizing Belfast Harbor storm surge and win
 
 **`presentation_app/data/`**
 - `loader.py`: CSV data loading and validation
+  - `parse_raw_dataframes()`: Parse tide/weather DataFrames with datetime columns
+  - `filter_by_window()`: Filter data by time window and prepare for merging
 - `processor.py`: Data merging, surge calculations, wind processing
 - `noaa_api.py`: Optional NOAA predictions (may return None if unavailable)
+
+**`presentation_app/cache.py`**
+- `LRUCacheTTL`: Thread-safe LRU cache with time-to-live
+- Configurable via env vars: CACHE_ENABLED, CACHE_MAX_SIZE, CACHE_TTL_SECONDS
+- Auto-evicts oldest entries when over capacity, expires after TTL
 
 ### Data Flow
 
@@ -57,13 +64,21 @@ A Dash/Plotly web application for visualizing Belfast Harbor storm surge and win
   - `animate=False` on all Graph components
   - `transition={'duration': 0}` for instant updates
   - `uirevision='map-constant'` on map
-  - In-memory session cache (session_id, center_date, data_version) keyed tuples
+  - LRU+TTL in-memory cache (configurable via env vars)
+  - Cache keyed by (session_id, center_date, data_version) tuples
+- **Code maintainability** (Jan 7, 2026):
+  - Helper functions: `cache_get/set`, `create_empty_figure`, `generate_slider_marks`
+  - DataLoader helpers: `parse_raw_dataframes()`, `filter_by_window()`
+  - Configurable constants: `DATA_WINDOW_HOURS`, `SLIDER_MARK_STRIDE`
+  - Removed unused `stored_data` State parameter
+  - Reduced code duplication (~40 lines)
 - **Deployment**: Gunicorn + Flask server, Render with Python 3.12, health check endpoint
 - **Import fixes**: All absolute imports converted to relative imports throughout package
 - **Animation stability**: No flashing during timeline playback
 - **UI/UX**: 
   - Animation starts disabled (paused until play button clicked)
-  - Speed slider (50-1000ms) for animation interval control
+  - Pauses automatically when user drags time slider
+  - Speed slider (50-1000ms, default 500ms) for animation interval control
   - Step size selector (1x, 2x, 4x, 8x) for frame jumping
 
 ### 🟡 Known Limitations
@@ -78,6 +93,37 @@ A Dash/Plotly web application for visualizing Belfast Harbor storm surge and win
 - API may return None/unavailable data
 - Code handles gracefully but surge calculation skipped if no predictions
 - Not a blocker for visualization with user data
+
+---
+
+## Recent Changes (January 7, 2026)
+
+**Commit:** "Refactor: simplify codebase for maintainability"
+
+### What Changed
+- ❌ Removed debug overlay feature (no longer needed after wind arrow fix)
+- ✅ Added `presentation_app/cache.py` with LRU+TTL cache implementation
+- ✅ Added config constants: `DATA_WINDOW_HOURS` (18), `SLIDER_MARK_STRIDE` (8)
+- ✅ Added cache env vars: `CACHE_ENABLED`, `CACHE_MAX_SIZE`, `CACHE_TTL_SECONDS`
+- ✅ Created DataLoader helpers: `parse_raw_dataframes()`, `filter_by_window()`
+- ✅ Created utility functions: `cache_get()`, `cache_set()`, `create_empty_figure()`, `generate_slider_marks()`
+- ✅ Removed unused `stored_data` State parameter from `process_data` callback
+- ✅ Refactored callbacks to use helpers (reduced ~40 lines of duplication)
+
+### Why
+- Wind arrow sizing issue was fixed by passing explicit index/data to map
+- Debug overlay became unnecessary clutter
+- Repeated date parsing and filtering logic in multiple callbacks
+- Cache access pattern (`isinstance` checks) scattered throughout
+- Slider mark generation was inline and repetitive
+- `stored_data` parameter never used but added noise
+
+### Result
+- ✅ Cleaner, more maintainable codebase
+- ✅ Configurable cache with TTL and size limits
+- ✅ DataLoader now owns all data filtering/parsing logic
+- ✅ Helper functions reduce duplication and clarify intent
+- ✅ Easier to tune behavior via config constants
 
 ---
 
@@ -108,7 +154,13 @@ A Dash/Plotly web application for visualizing Belfast Harbor storm surge and win
 ```python
 # Each tab gets unique session via dcc.Store(storage_type='session')
 session_id = str(uuid.uuid4())  # Per-tab unique ID
-session_cache = {}  # Global dict keyed by (session_id, center_date, data_version)
+
+# LRU+TTL cache with configurable size and expiration
+from presentation_app.cache import LRUCacheTTL
+session_cache = LRUCacheTTL(max_size=32, ttl_seconds=900) if CACHE_ENABLED else {}
+
+# Cache keyed by (session_id, center_date, data_version)
+cache_key = (session_id, str(center_date), data_version or 0)
 ```
 
 ### Animation Control
@@ -134,16 +186,24 @@ dcc.Graph(id='surge-map', animate=False, style={...})
 
 ### Deployment (Render)
 ```
-# Procfile
-web: gunicorn presentation_app.app:server
+# Procfile (updated for root entrypoint)
+web: gunicorn -w 2 -k gthread -b 0.0.0.0:$PORT app:server
 
 # runtime.txt
 python-3.12.1
+
+# Dockerfile (for DigitalOcean)
+CMD gunicorn -w 2 -k gthread -b 0.0.0.0:$PORT app:server
 
 # Health check endpoint
 @app.server.route('/health')
 def health_check():
     return {'status': 'ok'}, 200
+
+# Environment variables
+CACHE_ENABLED=1
+CACHE_MAX_SIZE=32
+CACHE_TTL_SECONDS=900
 ```
 
 ---
@@ -161,9 +221,9 @@ def health_check():
 - [ ] **UI refinements**: Loading states, error notifications
 
 ### Low Priority (Nice-to-have)
+- [x] **Data caching**: LRU+TTL cache implemented with env configuration
 - [ ] **Panning during animation**: Consider simpler solution (e.g., pause on first pan event, resume after timeout)
 - [ ] **Map animations**: Custom marker animations for surge/wind indicators
-- [ ] **Data caching**: Persistent cache of NOAA predictions to avoid repeated API calls
 - [ ] **Mobile responsiveness**: Better layout for smaller screens
 
 ---
@@ -173,8 +233,12 @@ def health_check():
 ### Run Local Dev Server
 ```bash
 cd presentation_app_standalone
-python -m presentation_app.app
-# Or: gunicorn presentation_app.app:server --reload
+python app.py
+# Or with custom port/cache settings:
+export PORT=8053
+export CACHE_ENABLED=1
+export CACHE_MAX_SIZE=64
+python app.py
 ```
 
 ### Test Imports
@@ -204,14 +268,15 @@ presentation_app_standalone/
 ├── runtime.txt
 ├── requirements.txt
 ├── README.md
+├── app.py                        [Root entrypoint for deployment]
 ├── tide_belfast.csv
 ├── weather_belfast.csv
 ├── DEVELOPMENT_CONTEXT.md  ← You are here
 └── presentation_app/
     ├── __init__.py
-    ├── app.py                    [Main app, callbacks, session mgmt]
-    ├── config.py                 [Constants, paths, config]
-    ├── utils.py                  [create_presentation_map]
+    ├── config.py                 [Constants, paths, config, cache settings]
+    ├── cache.py                  [LRU+TTL cache implementation]
+    ├── utils.py                  [create_presentation_map, wind geometry]
     ├── validators.py             [CSV validation]
     ├── assets/
     │   └── presentation.css      [Styling]
@@ -220,7 +285,7 @@ presentation_app_standalone/
     │   └── overlay_panel.py       [Control panel UI, stores]
     └── data/
         ├── __init__.py
-        ├── loader.py             [CSV loading]
+        ├── loader.py             [CSV loading, parse/filter helpers]
         ├── processor.py          [Data merging, surge calc]
         └── noaa_api.py           [NOAA integration]
 ```
