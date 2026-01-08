@@ -84,6 +84,191 @@ def create_wind_speed_chart(df, current_time, current_data):
     return fig
 
 
+def create_full_range_tide_chart(tide_df: pd.DataFrame, weather_df: pd.DataFrame) -> go.Figure:
+    """Create a full-range tide chart showing observed vs predicted for the entire dataset."""
+    fig = go.Figure()
+    
+    # Add observed water level
+    fig.add_trace(go.Scatter(
+        x=tide_df.index, 
+        y=tide_df['water_level'], 
+        mode='lines', 
+        name='Observed Water Level',
+        line=dict(color='#3498db', width=1.5),
+        hovertemplate='%{x|%Y-%m-%d %H:%M}<br>Water Level: %{y:.2f} ft<extra></extra>'
+    ))
+    
+    # Fetch and add predicted tide for the full range in monthly chunks
+    try:
+        station_id = app_data.get('station_id', '8415191')
+        noaa_client = NOAAClient(station_id)
+        start_dt = tide_df.index.min()
+        end_dt = tide_df.index.max()
+        
+        # Fetch predictions in monthly chunks (NOAA API limit is ~31 days)
+        # Use use_hilo=True to get high/low predictions which are available for historical data
+        all_predictions = []
+        current_start = start_dt
+        
+        while current_start < end_dt:
+            # Get chunk end date (1 month from current start or end_dt, whichever is earlier)
+            chunk_end = min(current_start + pd.DateOffset(months=1), end_dt)
+            
+            logger.info(f"Fetching predictions for {current_start.date()} to {chunk_end.date()}")
+            chunk_predictions = noaa_client.fetch_predictions(current_start, chunk_end, use_hilo=True)
+            
+            if chunk_predictions is not None and not chunk_predictions.empty:
+                all_predictions.append(chunk_predictions)
+            
+            # Move to next month
+            current_start = chunk_end
+        
+        # Combine all chunks
+        if all_predictions:
+            predictions = pd.concat(all_predictions).sort_index()
+            
+            # Remove any duplicate timestamps
+            predictions = predictions[~predictions.index.duplicated(keep='first')]
+            
+            # Interpolate high/low predictions to create a continuous line
+            from presentation_app.data.processor import SurgeProcessor
+            processor = SurgeProcessor()
+            # Create a continuous predicted tide line by interpolating between highs/lows
+            # tide_df already has datetime index, use it directly
+            processed = processor.calculate_surge_from_predictions(tide_df, predictions, method='pchip')
+            
+            if 'predicted' in processed.columns:
+                fig.add_trace(go.Scatter(
+                    x=processed.index, 
+                    y=processed['predicted'], 
+                    mode='lines', 
+                    name='Predicted Tide',
+                    line=dict(color='#e67e22', width=2, dash='dash'),
+                    hovertemplate='%{x|%Y-%m-%d %H:%M}<br>Predicted: %{y:.2f} ft<extra></extra>'
+                ))
+                logger.info(f"Added predicted tide line to full-range chart (interpolated from {len(predictions)} high/low points)")
+        else:
+            logger.warning("No predictions fetched for full range")
+    except Exception as e:
+        logger.warning(f"Could not fetch NOAA predictions for full range: {e}", exc_info=True)
+    
+    y_min = tide_df['water_level'].min() - 1
+    y_max = tide_df['water_level'].max() + 1
+    
+    fig.update_layout(
+        title='Tide: Observed vs Predicted (Full Range)',
+        xaxis=dict(title='Date'),
+        yaxis=dict(title='Feet', range=[y_min, y_max]),
+        height=300,
+        margin=dict(l=60, r=20, t=50, b=50),
+        hovermode='x unified',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
+    )
+    return fig
+
+
+def create_full_range_surge_chart(tide_df: pd.DataFrame, weather_df: pd.DataFrame) -> go.Figure:
+    """Create a full-range surge chart showing actual minus predicted for the entire dataset."""
+    fig = go.Figure()
+    
+    # Fetch and calculate surge for the full range
+    try:
+        station_id = app_data.get('station_id', '8415191')
+        noaa_client = NOAAClient(station_id)
+        start_dt = tide_df.index.min()
+        end_dt = tide_df.index.max()
+        
+        # Fetch predictions in monthly chunks
+        all_predictions = []
+        current_start = start_dt
+        
+        while current_start < end_dt:
+            chunk_end = min(current_start + pd.DateOffset(months=1), end_dt)
+            chunk_predictions = noaa_client.fetch_predictions(current_start, chunk_end, use_hilo=True)
+            
+            if chunk_predictions is not None and not chunk_predictions.empty:
+                all_predictions.append(chunk_predictions)
+            
+            current_start = chunk_end
+        
+        if all_predictions:
+            predictions = pd.concat(all_predictions).sort_index()
+            predictions = predictions[~predictions.index.duplicated(keep='first')]
+            
+            from presentation_app.data.processor import SurgeProcessor
+            processor = SurgeProcessor()
+            processed = processor.calculate_surge_from_predictions(tide_df, predictions, method='pchip')
+            
+            if 'surge' in processed.columns:
+                # Add surge line
+                fig.add_trace(go.Scatter(
+                    x=processed.index, 
+                    y=processed['surge'], 
+                    mode='lines', 
+                    name='Storm Surge',
+                    line=dict(color='#e74c3c', width=1.5),
+                    fill='tozeroy',
+                    fillcolor='rgba(231, 76, 60, 0.2)',
+                    hovertemplate='%{x|%Y-%m-%d %H:%M}<br>Surge: %{y:+.2f} ft<extra></extra>'
+                ))
+                
+                # Add zero line
+                fig.add_hline(y=0, line=dict(color='gray', width=1, dash='dash'), opacity=0.5)
+                
+                logger.info(f"Added surge data to full-range chart")
+    except Exception as e:
+        logger.warning(f"Could not calculate surge for full range: {e}", exc_info=True)
+    
+    # Set y-axis range based on surge values if available
+    if fig.data:
+        y_values = fig.data[0].y
+        y_max = max(abs(min(y_values)), abs(max(y_values))) + 1
+        y_range = [-y_max, y_max]
+    else:
+        y_range = [-5, 5]
+    
+    fig.update_layout(
+        title='Storm Surge (Full Range)',
+        xaxis=dict(title='Date'),
+        yaxis=dict(title='Feet', range=y_range),
+        height=300,
+        margin=dict(l=60, r=20, t=50, b=50),
+        hovermode='x unified',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
+    )
+    return fig
+
+
+def create_full_range_wind_chart(weather_df: pd.DataFrame) -> go.Figure:
+    """Create a full-range wind speed chart for the entire dataset."""
+    fig = go.Figure()
+    
+    # Add wind speed
+    fig.add_trace(go.Scatter(
+        x=weather_df.index, 
+        y=weather_df['wind_speed'], 
+        mode='lines', 
+        name='Wind Speed',
+        line=dict(color='#2ecc71', width=1.5),
+        fill='tozeroy',
+        fillcolor='rgba(46, 204, 113, 0.2)',
+        hovertemplate='%{x|%Y-%m-%d %H:%M}<br>Wind Speed: %{y:.1f} kts<extra></extra>'
+    ))
+    
+    y_max = weather_df['wind_speed'].max() + 5
+    
+    fig.update_layout(
+        title='Wind Speed (Full Range)',
+        xaxis=dict(title='Date'),
+        yaxis=dict(title='Knots', range=[0, y_max]),
+        height=300,
+        margin=dict(l=60, r=20, t=50, b=50),
+        hovermode='x unified',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
+    )
+    return fig
+
+
 def build_frame_patches(frame):
     """Create chart patches and display strings for a single animation frame."""
     water_chart_patch = Patch()
@@ -146,12 +331,22 @@ app.layout = html.Div([
     html.Div([dcc.Graph(id='surge-map', config={'displayModeBar': False}, animate=False, style={'width': '100%', 'height': '100%'})], style={'height': '70vh', 'width': '100%'}),
     html.Div([
         dbc.Row([
-            dbc.Col([dcc.Graph(id='water-level-chart', config={'displayModeBar': False}, animate=False, style={'height': '100%'})], width=6, style={'padding': '0 5px'}),
-            dbc.Col([dcc.Graph(id='wind-speed-chart', config={'displayModeBar': False}, animate=False, style={'height': '100%'})], width=6, style={'padding': '0 5px'}),
-        ], style={'height': '100%', 'margin': 0})
-    ], style={'height': '30vh', 'width': '100%', 'background': '#f8f9fa', 'padding': '10px 0'}),
+            dbc.Col([dcc.Graph(id='water-level-chart', config={'displayModeBar': False}, animate=False)], width=6, style={'padding': '0 5px'}),
+            dbc.Col([dcc.Graph(id='wind-speed-chart', config={'displayModeBar': False}, animate=False)], width=6, style={'padding': '0 5px'}),
+        ], style={'margin': 0})
+    ], style={'width': '100%', 'background': '#f8f9fa', 'padding': '8px 0', 'marginTop': '12px'}),
+    # Full-range overview graphs at the bottom
+    html.Div([
+        dcc.Graph(id='full-range-tide-chart', config={'displayModeBar': False}, animate=False)
+    ], style={'width': '100%', 'background': '#ffffff', 'padding': '4px 0', 'marginTop': '12px'}),
+    html.Div([
+        dcc.Graph(id='full-range-surge-chart', config={'displayModeBar': False}, animate=False)
+    ], style={'width': '100%', 'background': '#ffffff', 'padding': '4px 0', 'marginTop': '12px'}),
+    html.Div([
+        dcc.Graph(id='full-range-wind-chart', config={'displayModeBar': False}, animate=False)
+    ], style={'width': '100%', 'background': '#ffffff', 'padding': '4px 0', 'marginTop': '12px'}),
     create_overlay_panel(min_date=initial_min, max_date=initial_max, center_date=initial_center),
-], style={'margin': 0, 'padding': 0, 'overflow': 'hidden', 'height': '100vh'})
+], style={'margin': 0, 'padding': '12px', 'overflowY': 'auto', 'minHeight': '100vh', 'display': 'flex', 'flexDirection': 'column'})
 
 
 @app.callback(Output('session-id', 'data'), Input('time-slider', 'id'), State('session-id', 'data'))
@@ -159,6 +354,30 @@ def ensure_session_id(_, existing):
     if existing:
         return existing
     return str(uuid.uuid4())
+
+
+@app.callback(
+    [Output('full-range-tide-chart', 'figure'),
+     Output('full-range-surge-chart', 'figure'),
+     Output('full-range-wind-chart', 'figure')],
+    Input('session-id', 'data'),
+    prevent_initial_call=False
+)
+def populate_full_range_charts(session_id):
+    """Populate the full-range tide, surge, and wind charts on page load."""
+    if app_data['tide_df'] is None or app_data['weather_df'] is None:
+        empty_fig = create_empty_figure('No data available')
+        return empty_fig, empty_fig, empty_fig
+    
+    try:
+        tide_fig = create_full_range_tide_chart(app_data['tide_df'], app_data['weather_df'])
+        surge_fig = create_full_range_surge_chart(app_data['tide_df'], app_data['weather_df'])
+        wind_fig = create_full_range_wind_chart(app_data['weather_df'])
+        return tide_fig, surge_fig, wind_fig
+    except Exception as e:
+        logger.error(f"Error creating full-range charts: {e}", exc_info=True)
+        empty_fig = create_empty_figure(f'Error: {str(e)}')
+        return empty_fig, empty_fig, empty_fig
 
 
 @app.callback(
