@@ -173,3 +173,21 @@ python app.py
 - Add rainfall graph and optionally overlay rainfall intensity on the map.
 - Add draggable sliders at the ends of the timeline to adjust the start/end datetimes for the visible window.
 - Support multiple locations (wind, tide, rainfall) displayed simultaneously on the map, e.g., sites around Penobscot Bay.
+
+## Future Enhancements
+
+### Advanced Surge Analysis
+- **Multivariate regression analysis** to separate influences of wind, atmospheric pressure, and river discharge on water levels
+- **Integration with river discharge data** from USGS stream gauges (Penobscot River at Eddington #01036390)
+- **CTD sensor data integration** from UMaine Civil Engineering Dept. (Passagassawakeag River and Penobscot River sensors)
+  - Salinity measurements to detect freshwater influence
+  - Temperature/density stratification effects
+  - Direct water level measurements from pressure sensors
+- **Correlation analysis tools** to quantify wind-surge relationships and identify river-driven vs. wind-driven surge events
+- **Seasonal pattern analysis** to distinguish spring runoff effects from meteorological forcing
+- **Atmospheric pressure effects** - add inverse barometer correction for storm surge predictions (1 mb drop ≈ 1 cm rise)
+
+### Data Sources
+- UMaine Physical Oceanography Group (Dr. Lauren Ross) - CTD data
+- USGS Water Data for the Nation - stream discharge
+- NERACOOS - regional ocean observing data

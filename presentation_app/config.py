@@ -3,6 +3,40 @@ Standalone Presentation App Configuration
 """
 import os
 
+# CSV Column Mappings (maps internal name -> CSV header name)
+TIDE_CSV_COLUMNS = {
+    'datetime': 'timestring [America/New_York]',
+    'water_level': 'Water level [ft]'
+}
+
+WEATHER_CSV_COLUMNS = {
+    'datetime': 'timestring [America/New_York]',
+    'wind_speed': 'Wind speed [kn]',
+    'wind_direction': 'Wind direction (coming from) [deg N]'
+}
+
+# Column Metadata (units and display labels)
+TIDE_COLUMN_METADATA = {
+    'water_level': {
+        'units': 'ft',
+        'label': 'Water Level'
+    }
+}
+
+WEATHER_COLUMN_METADATA = {
+    'wind_speed': {
+        'units': 'kn',
+        'label': 'Wind Speed'
+    },
+    'wind_direction': {
+        'units': 'deg',
+        'label': 'Wind Direction'
+    }
+}
+
+# Timezone for local time
+LOCAL_TIMEZONE = 'America/New_York'
+
 # Station info
 STATION_INFO = {
     '8415191': {

@@ -110,9 +110,10 @@ app_data = {'tide_df': None,'weather_df': None,'station_id': '8415191'}
 session_cache = LRUCacheTTL(max_size=CACHE_MAX_SIZE, ttl_seconds=CACHE_TTL_SECONDS) if CACHE_ENABLED else {}
 
 try:
-    tide_df = pd.read_csv('tide_belfast.csv', comment='#', header=None, names=['timestamp', 'timestring', 'water_level'])
-    cols_wx = ['timestamp','timestring','solar','rain','wind_speed','wind_dir_from','gust','air_temp','vapor','pressure','humidity','temp_humid']
-    weather_df = pd.read_csv('weather_belfast.csv', comment='#', header=None, names=cols_wx)
+    from pathlib import Path
+    loader = DataLoader()
+    tide_df = loader.load_tide_csv(Path('tide_belfast.csv'))
+    weather_df = loader.load_weather_csv(Path('weather_belfast.csv'))
     app_data['tide_df'] = tide_df
     app_data['weather_df'] = weather_df
     logger.info(f"Loaded default data: {len(tide_df)} tide rows, {len(weather_df)} weather rows")
@@ -123,16 +124,19 @@ except Exception as e:
 def get_initial_dates():
     if app_data['tide_df'] is not None and app_data['weather_df'] is not None:
         try:
-            loader = DataLoader()
-            tide_df, weather_df = loader.parse_raw_dataframes(app_data['tide_df'], app_data['weather_df'])
-            min_date_overlap = max(tide_df['dt'].min(), weather_df['dt'].min())
-            max_date_overlap = min(tide_df['dt'].max(), weather_df['dt'].max())
+            # Data is already loaded and processed with datetime index
+            tide_df = app_data['tide_df']
+            weather_df = app_data['weather_df']
+            min_date_overlap = max(tide_df.index.min(), weather_df.index.min())
+            max_date_overlap = min(tide_df.index.max(), weather_df.index.max())
             forced_center = pd.Timestamp('2024-01-10')
             center_date = forced_center
             min_date = min(forced_center, min_date_overlap)
             max_date = max_date_overlap
+            logger.info(f"Initial dates: min={min_date}, max={max_date}, center={center_date}")
             return min_date, max_date, center_date
-        except:
+        except Exception as e:
+            logger.error(f"Error getting initial dates: {e}", exc_info=True)
             pass
     return None, None, None
 
@@ -180,10 +184,11 @@ def load_sample_data(n_clicks):
     if app_data['tide_df'] is None or app_data['weather_df'] is None:
         return dash.no_update
     try:
-        loader = DataLoader()
-        tide_df, weather_df = loader.parse_raw_dataframes(app_data['tide_df'], app_data['weather_df'])
-        min_date = max(tide_df['dt'].min(), weather_df['dt'].min())
-        max_date = min(tide_df['dt'].max(), weather_df['dt'].max())
+        # Data is already loaded and processed with datetime index
+        tide_df = app_data['tide_df']
+        weather_df = app_data['weather_df']
+        min_date = max(tide_df.index.min(), weather_df.index.min())
+        max_date = min(tide_df.index.max(), weather_df.index.max())
         center_date = min_date + (max_date - min_date) / 2
         return min_date, max_date, center_date
     except Exception as e:
@@ -207,6 +212,7 @@ def load_sample_data(n_clicks):
     State('data-version', 'data')
 )
 def process_data(center_date, session_id, data_version):
+    logger.info(f"process_data called with center_date={center_date}")
     if app_data['tide_df'] is None or app_data['weather_df'] is None:
         empty_fig = create_empty_figure('Upload data to begin')
         return empty_fig, empty_fig, empty_fig, "No data", 0, {}, None, "--:--", "--", "--"
@@ -219,11 +225,16 @@ def process_data(center_date, session_id, data_version):
         center_dt = pd.to_datetime(center_date)
         start_dt = center_dt - pd.Timedelta(hours=DATA_WINDOW_HOURS)
         end_dt = center_dt + pd.Timedelta(hours=DATA_WINDOW_HOURS)
+        logger.info(f"Calculated window: center_dt={center_dt}, start_dt={start_dt}, end_dt={end_dt}")
         loader = DataLoader()
-        tide_raw, weather_raw = loader.parse_raw_dataframes(app_data['tide_df'], app_data['weather_df'])
-        available_min = max(tide_raw['dt'].min(), weather_raw['dt'].min())
-        available_max = min(tide_raw['dt'].max(), weather_raw['dt'].max())
+        # Data is already loaded and processed with datetime index
+        tide_raw = app_data['tide_df']
+        weather_raw = app_data['weather_df']
+        available_min = max(tide_raw.index.min(), weather_raw.index.min())
+        available_max = min(tide_raw.index.max(), weather_raw.index.max())
+        logger.info(f"Available data range: {available_min} to {available_max}")
         tide_df, weather_df = loader.filter_by_window(tide_raw, weather_raw, start_dt, end_dt)
+        logger.info(f"After filter_by_window: tide_df has {len(tide_df)} rows, weather_df has {len(weather_df)} rows")
         if tide_df.empty or weather_df.empty:
             center_dt = min(max(center_dt, available_min), available_max)
             start_dt = center_dt - pd.Timedelta(hours=DATA_WINDOW_HOURS)
@@ -305,6 +316,7 @@ def update_time_position(time_idx, animation_data):
     if time_idx >= len(frames):
         return (dash.no_update,) * 6
     frame = frames[time_idx]
+    logger.info(f"update_time_position: time_idx={time_idx}, frame timestamp={frame.get('timestamp_str', 'N/A')}, total frames={len(frames)}")
     
     # Rebuild DataFrame from cache for map updates
     try:

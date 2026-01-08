@@ -16,6 +16,11 @@ def create_overlay_panel(min_date: Optional[pd.Timestamp] = None,
         else:
             center_date = min_date
 
+    # Convert timestamps to date strings for Dash components
+    min_date_str = min_date.strftime('%Y-%m-%d') if min_date else None
+    max_date_str = max_date.strftime('%Y-%m-%d') if max_date else None
+    center_date_str = center_date.strftime('%Y-%m-%d') if center_date else None
+
     return html.Div([
         html.Div([
             html.H5("Storm Surge Visualization", className="mb-2"),
@@ -68,7 +73,7 @@ def create_overlay_panel(min_date: Optional[pd.Timestamp] = None,
                 dbc.Button("Use Sample Data", id='load-sample-data', color="secondary", size="sm", className="w-100 mb-2"),
                 html.Div([
                     html.Label("Center Date (±18 hours)", className="small mb-1"),
-                    dcc.DatePickerSingle(id='center-date-picker', min_date_allowed=min_date, max_date_allowed=max_date, date=center_date, className="w-100")
+                    dcc.DatePickerSingle(id='center-date-picker', min_date_allowed=min_date_str, max_date_allowed=max_date_str, date=center_date_str, className="w-100")
                 ])
             ], title="Data & Settings", className="small")
         ], start_collapsed=True, flush=True),
