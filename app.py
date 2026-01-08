@@ -338,8 +338,8 @@ def create_full_range_surge_chart(tide_df: pd.DataFrame, weather_df: pd.DataFram
         logger.warning(f"Could not calculate surge for full range: {e}", exc_info=True)
     
     # Set y-axis range based on surge values if available
-    if fig.data:
-        y_values = fig.data[0].y
+    if fig.data and hasattr(fig.data[0], 'y') and fig.data[0].y is not None:  # type: ignore
+        y_values = fig.data[0].y  # type: ignore
         y_max = max(abs(min(y_values)), abs(max(y_values))) + 1
         y_range = [-y_max, y_max]
     else:
@@ -573,6 +573,8 @@ def process_data(center_date, session_id, data_version):
         predictions = noaa_client.fetch_predictions(start_dt, end_dt, use_hilo=True)
         if predictions is None:
             predictions = noaa_client.try_fallback_stations(start_dt, end_dt)
+        if predictions is None:
+            predictions = pd.DataFrame()
         processor = SurgeProcessor()
         processed_df = processor.calculate_surge_from_predictions(merged_df, predictions, method='pchip')
         anim_df = processor.resample_data(processed_df, interval='15min')
@@ -585,16 +587,28 @@ def process_data(center_date, session_id, data_version):
             surge_val = row.get('surge', 0)
             wind_spd = row.get('wind_speed', 0)
             wind_dir = row.get('wind_dir_from', 0)
-            animation_frames.append({'timestamp': ts.isoformat(), 'timestamp_str': ts.strftime('%B %d, %Y %H:%M'), 'surge': surge_val, 'wind_speed': wind_spd, 'wind_dir': wind_dir, 'water_level': row.get('water_level', 0)})
+            if hasattr(ts, 'isoformat') and hasattr(ts, 'strftime'):
+                ts_iso = ts.isoformat()  # type: ignore
+                ts_str = ts.strftime('%B %d, %Y %H:%M')  # type: ignore
+            else:
+                ts_iso = str(ts)
+                ts_str = str(ts)
+            animation_frames.append({'timestamp': ts_iso, 'timestamp_str': ts_str, 'surge': surge_val, 'wind_speed': wind_spd, 'wind_dir': wind_dir, 'water_level': row.get('water_level', 0)})
         current_time = anim_df.index[0]
         current_data = anim_df.iloc[0]
         wind_mode = 'arrows'
         map_fig = create_presentation_map(anim_df, center_lat, center_lon, current_time, station_name, wind_history_mode=wind_mode, wind_rose_overlay=True)
         water_chart = create_water_level_chart(anim_df, current_time, current_data)
         wind_chart = create_wind_speed_chart(anim_df, current_time, current_data)
-        marks = generate_slider_marks(anim_df.index)
+        if isinstance(anim_df.index, pd.DatetimeIndex):
+            marks = generate_slider_marks(anim_df.index)
+        else:
+            marks = generate_slider_marks(pd.DatetimeIndex(anim_df.index))
         anim_records = anim_df.reset_index().rename(columns={'index': 'dt'})
-        anim_records['dt'] = anim_records['dt'].dt.strftime('%Y-%m-%dT%H:%M:%S')
+        if hasattr(anim_records['dt'], 'dt') and hasattr(anim_records['dt'].dt, 'strftime'):
+            anim_records['dt'] = anim_records['dt'].dt.strftime('%Y-%m-%dT%H:%M:%S')  # type: ignore
+        else:
+            anim_records['dt'] = anim_records['dt'].astype(str)
         animation_store = {
             'frames': animation_frames,
             'records': anim_records.to_dict('records'),
