@@ -21,7 +21,7 @@
 .rc-slider-handle{border-color:#3498db!important}
 .rc-slider-handle:hover{border-color:#2980b9!important}
 .rc-slider-mark-text{font-size:10px;white-space:nowrap}
-#surge-map{width:100%!important;height:100%!important}
-#water-level-chart,#wind-speed-chart{width:100%!important;height:100%!important}
+#surge-map{width:100%!important}
+#water-level-chart,#wind-speed-chart{width:100%!important}
 @media (max-width:768px){.overlay-panel{width:calc(100vw - 40px);max-width:380px}}
 @media (max-width:480px){.overlay-panel{top:10px;right:10px;left:10px;width:auto;max-height:calc(100vh - 20px)}}

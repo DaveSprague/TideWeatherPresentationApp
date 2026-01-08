@@ -446,13 +446,13 @@ def get_initial_dates():
 initial_min, initial_max, initial_center = get_initial_dates()
 
 app.layout = html.Div([
-    html.Div([dcc.Graph(id='surge-map', config={'displayModeBar': False}, animate=False, style={'width': '100%', 'height': '100%'})], style={'height': '70vh', 'width': '100%'}),
+    html.Div([dcc.Graph(id='surge-map', config={'displayModeBar': False}, animate=False, style={'width': '100%', 'height': '65vh'})], style={'width': '100%', 'position': 'relative', 'marginBottom': '20px'}),
     html.Div([
         dbc.Row([
-            dbc.Col([dcc.Graph(id='water-level-chart', config={'displayModeBar': False}, animate=False)], width=6, style={'padding': '0 5px'}),
-            dbc.Col([dcc.Graph(id='wind-speed-chart', config={'displayModeBar': False}, animate=False)], width=6, style={'padding': '0 5px'}),
+            dbc.Col([dcc.Graph(id='water-level-chart', config={'displayModeBar': False}, animate=False, style={'height': '220px'})], width=6, style={'padding': '0 5px'}),
+            dbc.Col([dcc.Graph(id='wind-speed-chart', config={'displayModeBar': False}, animate=False, style={'height': '220px'})], width=6, style={'padding': '0 5px'}),
         ], style={'margin': 0})
-    ], style={'width': '100%', 'background': '#f8f9fa', 'padding': '8px 0', 'marginTop': '12px'}),
+    ], style={'width': '100%', 'background': '#f8f9fa', 'padding': '8px 0', 'position': 'relative'}),
     # Full-range overview graphs at the bottom (combined with shared x-axis)
     html.Div([
         dcc.Graph(id='full-range-combined-chart', config={'displayModeBar': False}, animate=False)
