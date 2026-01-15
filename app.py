@@ -45,12 +45,12 @@ BASE_PATH = get_base_path()
 
 # Cache wrapper functions
 def cache_get(key):
-    """Unified cache get supporting both dict and LRU cache."""
+    """Retrieve a value from cache supporting both dict and LRU cache implementations."""
     return session_cache.get(key) if hasattr(session_cache, 'get') else None
 
 
 def cache_set(key, value):
-    """Unified cache set supporting both dict and LRU cache."""
+    """Store a value in cache supporting both dict and LRU cache implementations."""
     if isinstance(session_cache, dict):
         session_cache[key] = value
     else:
@@ -58,12 +58,12 @@ def cache_set(key, value):
 
 
 def create_empty_figure(title: str = "No data"):
-    """Factory for empty/error figure."""
+    """Create an empty Plotly figure with a title message for error states."""
     return {'data': [], 'layout': {'title': title}}
 
 
 def generate_slider_marks(datetimes: pd.DatetimeIndex) -> dict:
-    """Generate slider marks from DatetimeIndex, showing midnights with stride."""
+    """Generate slider marks from datetime index, showing midnight timestamps with stride."""
     marks = {}
     midnight_idxs = [i for i, ts in enumerate(datetimes) if ts.hour == 0 and ts.minute == 0]
     if midnight_idxs:
@@ -79,6 +79,7 @@ def generate_slider_marks(datetimes: pd.DatetimeIndex) -> dict:
 
 
 def create_water_level_chart(df, current_time, current_data):
+    """Create water level chart with observed, predicted, and current time marker."""
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df.index, y=df['water_level'], mode='lines', name='Observed', line=dict(color='#3498db', width=2)))
     fig.add_trace(go.Scatter(x=df.index, y=df['predicted'], mode='lines', name='Predicted', line=dict(color='#95a5a6', width=1, dash='dash')))
@@ -93,6 +94,7 @@ def create_water_level_chart(df, current_time, current_data):
 
 
 def create_wind_speed_chart(df, current_time, current_data):
+    """Create wind speed chart with area fill and current time marker."""
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df.index, y=df['wind_speed'], mode='lines', name='Wind Speed', line=dict(color='#2ecc71', width=2), fill='tozeroy', fillcolor='rgba(46, 204, 113, 0.2)'))
     y_max = df['wind_speed'].max() + 5
@@ -407,7 +409,7 @@ def create_full_range_wind_chart(weather_df: pd.DataFrame) -> go.Figure:
 
 
 def build_frame_patches(frame):
-    """Create chart patches and display strings for a single animation frame."""
+    """Build Plotly patch updates and display strings for animation frame."""
     water_chart_patch = Patch()
     wind_chart_patch = Patch()
     water_chart_patch['data'][2]['x'] = [frame['timestamp'], frame['timestamp']]
@@ -446,6 +448,7 @@ except Exception as e:
 
 
 def get_initial_dates():
+    """Get initial date range from loaded tide and weather data."""
     if app_data['tide_df'] is not None and app_data['weather_df'] is not None:
         try:
             # Data is already loaded and processed with datetime index
@@ -759,7 +762,7 @@ def health_check():
 
 
 def kill_port_processes(port: int):
-    """Kill any processes using the specified port."""
+    """Terminate any processes using the specified port."""
     import subprocess
     import signal
     

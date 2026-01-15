@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def validate_tide_data(df: pd.DataFrame) -> Tuple[bool, Optional[str]]:
+    """Validate tide DataFrame has required columns and datetime index."""
     if df.empty:
         return False, "Tide data is empty"
     if 'water_level' not in df.columns:
@@ -22,6 +23,7 @@ def validate_tide_data(df: pd.DataFrame) -> Tuple[bool, Optional[str]]:
 
 
 def validate_weather_data(df: pd.DataFrame) -> Tuple[bool, Optional[str]]:
+    """Validate weather DataFrame has required columns and datetime index."""
     if df.empty:
         return False, "Weather data is empty"
     for col in ['wind_speed', 'wind_dir_from']:
@@ -33,6 +35,7 @@ def validate_weather_data(df: pd.DataFrame) -> Tuple[bool, Optional[str]]:
 
 
 def sanitize_numeric_column(series: pd.Series, col_name: str, min_val: Optional[float] = None, max_val: Optional[float] = None) -> pd.Series:
+    """Clean numeric column by coercing to float and applying min/max bounds."""
     series = pd.to_numeric(series, errors='coerce')
     if min_val is not None:
         series = series.where(series >= min_val)
