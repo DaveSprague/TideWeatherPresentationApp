@@ -16,9 +16,11 @@ class LRUCacheTTL:
         self._lock = RLock()
 
     def _is_expired(self, expires_at: float) -> bool:
+        """Check if cache entry has expired."""
         return expires_at < time.time()
 
     def get(self, key: Any) -> Optional[Any]:
+        """Retrieve value from cache if exists and not expired."""
         with self._lock:
             item = self._store.get(key)
             if not item:
@@ -35,6 +37,7 @@ class LRUCacheTTL:
             return value
 
     def set(self, key: Any, value: Any) -> None:
+        """Store value in cache with TTL."""
         with self._lock:
             expires_at = time.time() + self._ttl
             self._store[key] = (value, expires_at)
@@ -44,6 +47,7 @@ class LRUCacheTTL:
                 self._store.popitem(last=False)
 
     def delete(self, key: Any) -> None:
+        """Remove entry from cache if present."""
         with self._lock:
             try:
                 del self._store[key]
