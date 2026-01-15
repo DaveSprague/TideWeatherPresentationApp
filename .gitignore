@@ -18,3 +18,13 @@ __pycache__/
 
 # Caches
 .cache/
+
+# Build artifacts
+build/
+*.spec
+.eggs/
+*.egg-info/
+
+# macOS app bundles
+*.app/
+RunTideWeather

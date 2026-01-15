@@ -23,7 +23,7 @@ from presentation_app.data.loader import DataLoader
 from presentation_app.data.noaa_api import NOAAClient
 from presentation_app.data.processor import SurgeProcessor
 from presentation_app.cache import LRUCacheTTL
-from presentation_app.config import STATION_INFO, CACHE_ENABLED, CACHE_MAX_SIZE, CACHE_TTL_SECONDS, DATA_WINDOW_HOURS, SLIDER_MARK_STRIDE
+from presentation_app.config import STATION_INFO, CACHE_ENABLED, CACHE_MAX_SIZE, CACHE_TTL_SECONDS, DATA_WINDOW_HOURS, SLIDER_MARK_STRIDE, WIND_SPEED_UNIT, KNOTS_TO_MPH
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -55,6 +55,13 @@ def cache_set(key, value):
         session_cache[key] = value
     else:
         session_cache.set(key, value)
+
+
+def format_wind_speed(speed_kts: float) -> str:
+    """Format wind speed value with correct unit based on config setting."""
+    if WIND_SPEED_UNIT == 'mph':
+        return f"{speed_kts * KNOTS_TO_MPH:.1f} mph"
+    return f"{speed_kts:.1f} kts"
 
 
 def create_empty_figure(title: str = "No data"):
@@ -101,8 +108,9 @@ def create_wind_speed_chart(df, current_time, current_data):
     fig.add_trace(go.Scatter(x=[current_time, current_time], y=[0, y_max], mode='lines', name='Current', line=dict(color='red', width=2), hoverinfo='skip'))
     wind_spd = current_data.get('wind_speed', 0)
     wind_dir = current_data.get('wind_dir_from', 0)
-    fig.add_trace(go.Scatter(x=[current_time], y=[wind_spd], mode='markers+text', marker=dict(size=12, color='red', symbol='circle'), text=[f"{wind_spd:.1f} kts @ {wind_dir:.0f}°"], textposition='top center', hoverinfo='skip', showlegend=False))
-    fig.update_layout(title='Wind Speed', xaxis=dict(title=''), yaxis=dict(title='Knots', range=[0, y_max]), height=280, margin=dict(l=50, r=20, t=40, b=40), hovermode='x unified', legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1))
+    fig.add_trace(go.Scatter(x=[current_time], y=[wind_spd], mode='markers+text', marker=dict(size=12, color='red', symbol='circle'), text=[f"{format_wind_speed(wind_spd)} @ {wind_dir:.0f}°"], textposition='top center', hoverinfo='skip', showlegend=False))
+    y_axis_label = 'MPH' if WIND_SPEED_UNIT == 'mph' else 'Knots'
+    fig.update_layout(title='Wind Speed', xaxis=dict(title=''), yaxis=dict(title=y_axis_label, range=[0, y_max]), height=280, margin=dict(l=50, r=20, t=40, b=40), hovermode='x unified', legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1))
     return fig
 
 
@@ -223,89 +231,6 @@ def create_full_range_combined_chart(tide_df: pd.DataFrame, weather_df: pd.DataF
     return fig
 
 
-def create_full_range_tide_chart_OLD(tide_df: pd.DataFrame, weather_df: pd.DataFrame) -> go.Figure:
-    """Create a full-range tide chart showing observed vs predicted for the entire dataset."""
-    fig = go.Figure()
-    
-    # Add observed water level
-    fig.add_trace(go.Scatter(
-        x=tide_df.index, 
-        y=tide_df['water_level'], 
-        mode='lines', 
-        name='Observed Water Level',
-        line=dict(color='#3498db', width=1.5),
-        hovertemplate='%{x|%Y-%m-%d %H:%M}<br>Water Level: %{y:.2f} ft<extra></extra>'
-    ))
-    
-    # Fetch and add predicted tide for the full range in monthly chunks
-    try:
-        station_id = app_data.get('station_id', '8415191')
-        noaa_client = NOAAClient(station_id)
-        start_dt = tide_df.index.min()
-        end_dt = tide_df.index.max()
-        
-        # Fetch predictions in monthly chunks (NOAA API limit is ~31 days)
-        # Use use_hilo=True to get high/low predictions which are available for historical data
-        all_predictions = []
-        current_start = start_dt
-        
-        while current_start < end_dt:
-            # Get chunk end date (1 month from current start or end_dt, whichever is earlier)
-            chunk_end = min(current_start + pd.DateOffset(months=1), end_dt)
-            
-            logger.info(f"Fetching predictions for {current_start.date()} to {chunk_end.date()}")
-            chunk_predictions = noaa_client.fetch_predictions(current_start, chunk_end, use_hilo=True)
-            
-            if chunk_predictions is not None and not chunk_predictions.empty:
-                all_predictions.append(chunk_predictions)
-            
-            # Move to next month
-            current_start = chunk_end
-        
-        # Combine all chunks
-        if all_predictions:
-            predictions = pd.concat(all_predictions).sort_index()
-            
-            # Remove any duplicate timestamps
-            predictions = predictions[~predictions.index.duplicated(keep='first')]
-            
-            # Interpolate high/low predictions to create a continuous line
-            from presentation_app.data.processor import SurgeProcessor
-            processor = SurgeProcessor()
-            # Create a continuous predicted tide line by interpolating between highs/lows
-            # tide_df already has datetime index, use it directly
-            processed = processor.calculate_surge_from_predictions(tide_df, predictions, method='pchip')
-            
-            if 'predicted' in processed.columns:
-                fig.add_trace(go.Scatter(
-                    x=processed.index, 
-                    y=processed['predicted'], 
-                    mode='lines', 
-                    name='Predicted Tide',
-                    line=dict(color='#e67e22', width=2, dash='dash'),
-                    hovertemplate='%{x|%Y-%m-%d %H:%M}<br>Predicted: %{y:.2f} ft<extra></extra>'
-                ))
-                logger.info(f"Added predicted tide line to full-range chart (interpolated from {len(predictions)} high/low points)")
-        else:
-            logger.warning("No predictions fetched for full range")
-    except Exception as e:
-        logger.warning(f"Could not fetch NOAA predictions for full range: {e}", exc_info=True)
-    
-    y_min = tide_df['water_level'].min() - 1
-    y_max = tide_df['water_level'].max() + 1
-    
-    fig.update_layout(
-        title='Tide: Observed vs Predicted (Full Range)',
-        xaxis=dict(title='Date'),
-        yaxis=dict(title='Feet', range=[y_min, y_max]),
-        height=300,
-        margin=dict(l=60, r=20, t=50, b=50),
-        hovermode='x unified',
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
-    )
-    return fig
-
-
 def create_full_range_surge_chart(tide_df: pd.DataFrame, weather_df: pd.DataFrame) -> go.Figure:
     """Create a full-range surge chart showing actual minus predicted for the entire dataset."""
     fig = go.Figure()
@@ -419,10 +344,10 @@ def build_frame_patches(frame):
     wind_chart_patch['data'][1]['x'] = [frame['timestamp'], frame['timestamp']]
     wind_chart_patch['data'][2]['x'] = [frame['timestamp']]
     wind_chart_patch['data'][2]['y'] = [frame['wind_speed']]
-    wind_chart_patch['data'][2]['text'] = [f"{frame['wind_speed']:.1f} kts @ {frame['wind_dir']:.0f}°"]
+    wind_chart_patch['data'][2]['text'] = [f"{format_wind_speed(frame['wind_speed'])} @ {frame['wind_dir']:.0f}°"]
     time_str = frame['timestamp_str']
     surge_str = f"{frame['surge']:+.2f} ft"
-    wind_str = f"{frame['wind_speed']:.1f} kts @ {frame['wind_dir']:.0f}°"
+    wind_str = f"{format_wind_speed(frame['wind_speed'])} @ {frame['wind_dir']:.0f}°"
     return water_chart_patch, wind_chart_patch, time_str, surge_str, wind_str
 
 
@@ -649,7 +574,7 @@ def process_data(center_date, session_id, data_version):
         first_frame = animation_frames[0]
         time_str = first_frame['timestamp_str']
         surge_str = f"{first_frame['surge']:.2f} ft"
-        wind_str = f"{first_frame['wind_speed']:.1f} mph @ {first_frame['wind_dir']:.0f}°"
+        wind_str = f"{format_wind_speed(first_frame['wind_speed'])} @ {first_frame['wind_dir']:.0f}°"
         
         result = (map_fig, water_chart, wind_chart, station_name, len(anim_df) - 1, marks, animation_store, time_str, surge_str, wind_str)
         cache_set(cache_key, result)
@@ -805,21 +730,23 @@ if __name__ == '__main__':
     logger.info("Starting Belfast Harbor Storm Surge & Wind Visualization - PRESENTATION MODE (Standalone)")
     port = int(os.getenv('PORT', '8052'))
     
-    # Kill any existing processes using the port
-    kill_port_processes(port)
+    # Kill any existing processes using the port (only in parent process to avoid reloader conflicts)
+    if not os.environ.get('WERKZEUG_RUN_MAIN'):
+        kill_port_processes(port)
     
     logger.info(f"Server running on http://localhost:{port}")
     
-    # Open browser automatically after a short delay
-    def open_browser():
-        time.sleep(2)  # Give server time to start
-        url = f'http://localhost:{port}'
-        logger.info(f"Opening browser to {url}")
-        webbrowser.open(url)
-    
-    # Start browser opening in a separate thread
-    browser_thread = threading.Thread(target=open_browser, daemon=True)
-    browser_thread.start()
+    # Open browser automatically after a short delay (only in reloader child or non-debug mode)
+    if os.environ.get('WERKZEUG_RUN_MAIN') or getattr(sys, 'frozen', False):
+        def open_browser():
+            time.sleep(2)  # Give server time to start
+            url = f'http://localhost:{port}'
+            logger.info(f"Opening browser to {url}")
+            webbrowser.open(url)
+        
+        # Start browser opening in a separate thread
+        browser_thread = threading.Thread(target=open_browser, daemon=True)
+        browser_thread.start()
     
     # Disable debug mode when running as PyInstaller bundle to avoid reloader issues
     debug_mode = not getattr(sys, 'frozen', False)

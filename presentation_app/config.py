@@ -60,6 +60,8 @@ MAP_HEIGHT = 800
 # Wind display
 MIN_WIND_SPEED_DISPLAY = 1.0
 WIND_ARROW_SCALE = 0.002
+WIND_SPEED_UNIT = 'mph'  # 'kts' for knots or 'mph' for miles per hour
+KNOTS_TO_MPH = 1.15078  # Conversion factor
 
 # Surge thresholds/colors
 SURGE_THRESHOLDS = {
