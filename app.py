@@ -8,9 +8,14 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 import logging
 import os
+import sys
 import uuid
+import webbrowser
+import threading
+import time
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from pathlib import Path
 
 from presentation_app.utils import create_presentation_map
 from presentation_app.components.overlay_panel import create_overlay_panel
@@ -22,6 +27,20 @@ from presentation_app.config import STATION_INFO, CACHE_ENABLED, CACHE_MAX_SIZE,
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+# Get the base path for bundled resources (PyInstaller compatibility)
+def get_base_path():
+    """Get the base path for resources - handles both dev and PyInstaller bundled app."""
+    if getattr(sys, 'frozen', False):
+        # Running in PyInstaller bundle
+        return Path(sys._MEIPASS)
+    else:
+        # Running in development
+        return Path(__file__).parent
+
+
+BASE_PATH = get_base_path()
 
 
 # Cache wrapper functions
@@ -413,10 +432,12 @@ app_data = {'tide_df': None,'weather_df': None,'station_id': '8415191'}
 session_cache = LRUCacheTTL(max_size=CACHE_MAX_SIZE, ttl_seconds=CACHE_TTL_SECONDS) if CACHE_ENABLED else {}
 
 try:
-    from pathlib import Path
     loader = DataLoader()
-    tide_df = loader.load_tide_csv(Path('tide_belfast.csv'))
-    weather_df = loader.load_weather_csv(Path('weather_belfast.csv'))
+    tide_file = BASE_PATH / 'tide_belfast.csv'
+    weather_file = BASE_PATH / 'weather_belfast.csv'
+    logger.info(f"Loading data from: tide={tide_file}, weather={weather_file}")
+    tide_df = loader.load_tide_csv(tide_file)
+    weather_df = loader.load_weather_csv(weather_file)
     app_data['tide_df'] = tide_df
     app_data['weather_df'] = weather_df
     logger.info(f"Loaded default data: {len(tide_df)} tide rows, {len(weather_df)} weather rows")
@@ -737,8 +758,66 @@ def health_check():
     return {'status': 'ok'}, 200
 
 
+def kill_port_processes(port: int):
+    """Kill any processes using the specified port."""
+    import subprocess
+    import signal
+    
+    try:
+        # Use lsof to find processes using the port
+        result = subprocess.run(
+            ['lsof', '-ti', f':{port}'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        
+        if result.returncode == 0 and result.stdout.strip():
+            pids = result.stdout.strip().split('\n')
+            logger.info(f"Found {len(pids)} process(es) using port {port}, terminating...")
+            
+            for pid in pids:
+                try:
+                    pid_int = int(pid)
+                    os.kill(pid_int, signal.SIGTERM)
+                    logger.info(f"Terminated process {pid_int}")
+                except (ValueError, ProcessLookupError) as e:
+                    logger.debug(f"Could not terminate process {pid}: {e}")
+            
+            # Give processes time to shut down
+            import time
+            time.sleep(1)
+        else:
+            logger.debug(f"No processes found using port {port}")
+    except FileNotFoundError:
+        # lsof not available (unlikely on macOS, but handle gracefully)
+        logger.warning("lsof command not found, cannot check for existing processes")
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Timeout checking for processes on port {port}")
+    except Exception as e:
+        logger.warning(f"Error checking/killing processes on port {port}: {e}")
+
+
 if __name__ == '__main__':
     logger.info("Starting Belfast Harbor Storm Surge & Wind Visualization - PRESENTATION MODE (Standalone)")
     port = int(os.getenv('PORT', '8052'))
+    
+    # Kill any existing processes using the port
+    kill_port_processes(port)
+    
     logger.info(f"Server running on http://localhost:{port}")
-    app.run(debug=True, port=port)
+    
+    # Open browser automatically after a short delay
+    def open_browser():
+        time.sleep(2)  # Give server time to start
+        url = f'http://localhost:{port}'
+        logger.info(f"Opening browser to {url}")
+        webbrowser.open(url)
+    
+    # Start browser opening in a separate thread
+    browser_thread = threading.Thread(target=open_browser, daemon=True)
+    browser_thread.start()
+    
+    # Disable debug mode when running as PyInstaller bundle to avoid reloader issues
+    debug_mode = not getattr(sys, 'frozen', False)
+    app.run(debug=debug_mode, port=port)
