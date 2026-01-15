@@ -19,12 +19,6 @@ __pycache__/
 # Caches
 .cache/
 
-# Build artifacts
+# Build artifacts (PyInstaller)
 build/
 *.spec
-.eggs/
-*.egg-info/
-
-# macOS app bundles
-*.app/
-RunTideWeather

@@ -1,0 +1,27 @@
+/* Copied from main presentation app */
+.overlay-panel{position:fixed;top:20px;right:20px;width:350px;max-height:calc(70vh - 40px);background:rgba(255,255,255,.95);backdrop-filter:blur(10px);padding:15px;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.3);z-index:1000;overflow-y:auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif}
+.overlay-panel::-webkit-scrollbar{width:6px}
+.overlay-panel::-webkit-scrollbar-track{background:rgba(0,0,0,.1);border-radius:3px}
+.overlay-panel::-webkit-scrollbar-thumb{background:rgba(0,0,0,.3);border-radius:3px}
+.time-display{font-size:20px;font-weight:bold;text-align:center;color:#2c3e50;padding:10px;background:rgba(52,152,219,.1);border-radius:8px}
+.stat-label{font-size:11px;text-transform:uppercase;color:#7f8c8d;font-weight:600;margin-bottom:4px}
+.stat-value{font-size:24px;font-weight:bold;color:#2c3e50}
+.wind-value{font-size:20px;line-height:1.15}
+.chart-title{font-weight:600;color:#34495e;text-align:center}
+.step-dropdown .Select-control{height:32px!important;min-height:32px!important}
+.step-dropdown .Select-value{line-height:32px!important}
+.btn-group{width:100%}
+.btn{transition:all .2s ease}
+.btn:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.accordion-button{font-size:13px!important;padding:8px 12px!important}
+.accordion-button:not(.collapsed){background-color:rgba(52,152,219,.1)!important}
+.upload-area{cursor:pointer;transition:all .2s ease}
+.upload-area:hover{background-color:rgba(52,152,219,.05);border-color:#3498db!important}
+.rc-slider-track{background-color:#3498db!important}
+.rc-slider-handle{border-color:#3498db!important}
+.rc-slider-handle:hover{border-color:#2980b9!important}
+.rc-slider-mark-text{font-size:10px;white-space:nowrap}
+#surge-map{width:100%!important}
+#water-level-chart,#wind-speed-chart{width:100%!important}
+@media (max-width:768px){.overlay-panel{width:calc(100vw - 40px);max-width:380px}}
+@media (max-width:480px){.overlay-panel{top:10px;right:10px;left:10px;width:auto;max-height:calc(100vh - 20px)}}
