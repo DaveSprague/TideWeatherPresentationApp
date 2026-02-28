@@ -103,28 +103,42 @@ def build_wind_rose_traces(df: pd.DataFrame, center_lat: float, center_lon: floa
     return traces
 
 
-def create_presentation_map(df: pd.DataFrame, center_lat: float, center_lon: float, current_time: Optional[pd.Timestamp] = None, station_name: str = "Belfast Harbor", wind_history_mode: str = 'arrows', history_length: int = 6, wind_rose_overlay: bool = False, current_idx: Optional[int] = None, current_data: Optional[pd.Series] = None) -> go.Figure:
-    if current_time is None:
-        current_time = df.index[0]
-    if current_idx is None or current_data is None:
-        if current_time in df.index:
-            current_data = df.loc[current_time]
-            current_idx = df.index.get_loc(current_time)
-        else:
-            current_data = df.iloc[0]
-            current_time = df.index[0]
-            current_idx = 0
-    fig = go.Figure()
+def _render_station_traces(
+    fig: go.Figure,
+    df: pd.DataFrame,
+    center_lat: float,
+    center_lon: float,
+    station_name: str,
+    current_idx: int,
+    current_data: pd.Series,
+    wind_history_mode: str = 'arrows',
+    history_length: int = 6,
+    wind_rose_overlay: bool = False,
+) -> None:
+    """Add all per-station traces to *fig* in-place.
+
+    Extracted from create_presentation_map so the same rendering logic
+    can be called in a loop when multiple stations appear on the same map.
+    Each call adds: wind rose (optional), surge marker, wind arrow,
+    station label marker, and faded wind-history arrows.
+    """
     if wind_rose_overlay:
         for trace in build_wind_rose_traces(df, center_lat, center_lon, current_idx):
             fig.add_trace(trace)
+
     surge_color = SurgeProcessor.get_surge_color(current_data.get('surge', 0))
     surge_value = current_data.get('surge', 0)
     marker_size = 20 + abs(surge_value) * 8
-    fig.add_trace(go.Scattermap(lat=[center_lat], lon=[center_lon], mode='markers', marker=dict(size=marker_size, color=surge_color, opacity=0.7, symbol='circle'), text=f"Surge: {surge_value:+.2f} ft", hovertemplate='<b>%{text}</b><br>Time: %{x}<extra></extra>', name='Surge'))
+    fig.add_trace(go.Scattermap(
+        lat=[center_lat], lon=[center_lon], mode='markers',
+        marker=dict(size=marker_size, color=surge_color, opacity=0.7, symbol='circle'),
+        text=f"Surge: {surge_value:+.2f} ft",
+        hovertemplate='<b>%{text}</b><br>Time: %{x}<extra></extra>',
+        name='Surge',
+    ))
+
     wind_speed = current_data.get('wind_speed', 0)
     wind_dir = current_data.get('wind_dir_from', 0)
-
     if wind_speed >= MIN_WIND_SPEED_DISPLAY:
         arrow = calculate_arrow_geometry(center_lat, center_lon, wind_dir, wind_speed, scale=WIND_ARROW_SCALE, arrowhead_size=0.25, arrowhead_angle=25)
         fig.add_trace(go.Scattermap(lat=arrow['arrow_lats'], lon=arrow['arrow_lons'], mode='lines', line=dict(color='black', width=4), opacity=1.0, hoverinfo='skip', showlegend=False))
@@ -132,7 +146,15 @@ def create_presentation_map(df: pd.DataFrame, center_lat: float, center_lon: flo
     else:
         fig.add_trace(go.Scattermap(lat=[], lon=[], mode='lines', hoverinfo='skip', showlegend=False, visible=False))
         fig.add_trace(go.Scattermap(lat=[], lon=[], mode='lines', hoverinfo='skip', showlegend=False, visible=False))
-    fig.add_trace(go.Scattermap(lat=[center_lat], lon=[center_lon], mode='markers', marker=dict(size=10, color='white', symbol='circle', opacity=0.8), text=station_name, hovertemplate='<b>%{text}</b><extra></extra>', name='Station', showlegend=False))
+
+    fig.add_trace(go.Scattermap(
+        lat=[center_lat], lon=[center_lon], mode='markers',
+        marker=dict(size=10, color='white', symbol='circle', opacity=0.8),
+        text=station_name,
+        hovertemplate='<b>%{text}</b><extra></extra>',
+        name='Station', showlegend=False,
+    ))
+
     if wind_history_mode != 'off' and current_idx > 0:
         start_idx = max(0, current_idx - history_length)
         history_data = df.iloc[start_idx:current_idx]
@@ -146,5 +168,26 @@ def create_presentation_map(df: pd.DataFrame, center_lat: float, center_lon: flo
                 opacity = WIND_FADE_OPACITY_MIN + (WIND_FADE_OPACITY_MAX - WIND_FADE_OPACITY_MIN) * opacity_factor
                 fig.add_trace(go.Scattermap(lat=geom['arrow_lats'], lon=geom['arrow_lons'], mode='lines', line=dict(color=f'rgba(100,100,100,{opacity})', width=3), hoverinfo='skip', showlegend=False))
                 fig.add_trace(go.Scattermap(lat=geom['arrowhead_lats'], lon=geom['arrowhead_lons'], mode='lines', fill='toself', fillcolor=f'rgba(80,80,80,{opacity*0.8})', line=dict(color=f'rgba(100,100,100,{opacity})', width=2), hoverinfo='skip', showlegend=False))
+
+
+def create_presentation_map(df: pd.DataFrame, center_lat: float, center_lon: float, current_time: Optional[pd.Timestamp] = None, station_name: str = "Belfast Harbor", wind_history_mode: str = 'arrows', history_length: int = 6, wind_rose_overlay: bool = False, current_idx: Optional[int] = None, current_data: Optional[pd.Series] = None) -> go.Figure:
+    """Build a Plotly map figure for one station.
+
+    To render multiple stations on the same map, call _render_station_traces()
+    for each station after creating the figure, then set the map layout once
+    based on the geographic centre of all stations.
+    """
+    if current_time is None:
+        current_time = df.index[0]
+    if current_idx is None or current_data is None:
+        if current_time in df.index:
+            current_data = df.loc[current_time]
+            current_idx = df.index.get_loc(current_time)
+        else:
+            current_data = df.iloc[0]
+            current_time = df.index[0]
+            current_idx = 0
+    fig = go.Figure()
+    _render_station_traces(fig, df, center_lat, center_lon, station_name, current_idx, current_data, wind_history_mode, history_length, wind_rose_overlay)
     fig.update_layout(map=dict(style=MAP_STYLE, center=dict(lat=center_lat, lon=center_lon), zoom=DEFAULT_ZOOM), height=MAP_HEIGHT, margin=dict(l=0, r=0, t=0, b=0), showlegend=False, uirevision='map-constant')
     return fig
