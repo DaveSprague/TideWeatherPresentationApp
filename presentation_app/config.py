@@ -63,6 +63,9 @@ WIND_ARROW_SCALE = 0.002
 WIND_SPEED_UNIT = 'mph'  # 'kts' for knots or 'mph' for miles per hour
 KNOTS_TO_MPH = 1.15078  # Conversion factor
 
+# Default center date for sample data (storm surge event of interest)
+DEFAULT_CENTER_DATE = '2024-01-10'
+
 # Surge thresholds/colors
 SURGE_THRESHOLDS = {
     'extreme_low': -1.5,
@@ -78,6 +81,10 @@ SURGE_COLORS = {
     'high': '#e74c3c',
     'extreme': '#8b0000'
 }
+
+# Surge ring visualization on the map
+SURGE_RING_RADIUS_DEG_PER_FT = 0.0025   # geographic radius per foot of surge
+SURGE_RING_LEVELS = [1, 2, 3]           # surge levels (ft) to draw reference rings for
 
 # Wind history
 WIND_HISTORY_LENGTH = 6

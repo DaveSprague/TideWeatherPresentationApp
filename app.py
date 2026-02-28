@@ -2,6 +2,7 @@
 Standalone Presentation-Mode Storm Surge Visualization
 Run: python app.py
 """
+import dataclasses
 import dash
 from dash import dcc, html, Input, Output, State, Patch
 import dash_bootstrap_components as dbc
@@ -13,6 +14,7 @@ import uuid
 import webbrowser
 import threading
 import time
+from typing import Optional
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from pathlib import Path
@@ -23,7 +25,11 @@ from presentation_app.data.loader import DataLoader
 from presentation_app.data.noaa_api import NOAAClient
 from presentation_app.data.processor import SurgeProcessor
 from presentation_app.cache import LRUCacheTTL
-from presentation_app.config import STATION_INFO, CACHE_ENABLED, CACHE_MAX_SIZE, CACHE_TTL_SECONDS, DATA_WINDOW_HOURS, SLIDER_MARK_STRIDE, WIND_SPEED_UNIT, KNOTS_TO_MPH
+from presentation_app.config import (
+    STATION_INFO, CACHE_ENABLED, CACHE_MAX_SIZE, CACHE_TTL_SECONDS,
+    DATA_WINDOW_HOURS, SLIDER_MARK_STRIDE, WIND_SPEED_UNIT, KNOTS_TO_MPH,
+    DEFAULT_CENTER_DATE,
+)
 from presentation_app.data.models import StationData
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -86,6 +92,25 @@ def generate_slider_marks(datetimes: pd.DatetimeIndex) -> dict:
     return marks
 
 
+def _fetch_full_range_predictions(noaa_client: NOAAClient,
+                                  start_dt: pd.Timestamp,
+                                  end_dt: pd.Timestamp) -> Optional[pd.DataFrame]:
+    """Fetch NOAA tide predictions in monthly chunks for a full date range."""
+    all_predictions = []
+    current_start = start_dt
+    while current_start < end_dt:
+        chunk_end = min(current_start + pd.DateOffset(months=1), end_dt)
+        logger.info(f"Fetching predictions for {current_start.date()} to {chunk_end.date()}")
+        chunk = noaa_client.fetch_predictions(current_start, chunk_end, use_hilo=True)
+        if chunk is not None and not chunk.empty:
+            all_predictions.append(chunk)
+        current_start = chunk_end
+    if not all_predictions:
+        return None
+    predictions = pd.concat(all_predictions).sort_index()
+    return predictions[~predictions.index.duplicated(keep='first')]
+
+
 def create_water_level_chart(df, current_time, current_data):
     """Create water level chart with observed, predicted, and current time marker."""
     fig = go.Figure()
@@ -142,32 +167,16 @@ def create_full_range_combined_chart(tide_df: pd.DataFrame, weather_df: pd.DataF
     # Row 2 & 3: Will be populated with surge and wind data
     # Fetch predictions for tide and surge
     try:
-        station_id = active_station.station_id
-        noaa_client = NOAAClient(station_id)
-        start_dt = tide_df.index.min()
-        end_dt = tide_df.index.max()
-        
-        all_predictions = []
-        current_start = start_dt
-        
-        while current_start < end_dt:
-            chunk_end = min(current_start + pd.DateOffset(months=1), end_dt)
-            logger.info(f"Fetching predictions for {current_start.date()} to {chunk_end.date()}")
-            chunk_predictions = noaa_client.fetch_predictions(current_start, chunk_end, use_hilo=True)
-            
-            if chunk_predictions is not None and not chunk_predictions.empty:
-                all_predictions.append(chunk_predictions)
-            
-            current_start = chunk_end
-        
-        if all_predictions:
-            predictions = pd.concat(all_predictions).sort_index()
-            predictions = predictions[~predictions.index.duplicated(keep='first')]
-            
-            from presentation_app.data.processor import SurgeProcessor
-            processor = SurgeProcessor()
-            processed = processor.calculate_surge_from_predictions(tide_df, predictions, method='pchip')
-            
+        noaa_client = NOAAClient(active_station.station_id)
+        predictions = _fetch_full_range_predictions(
+            noaa_client, tide_df.index.min(), tide_df.index.max()
+        )
+
+        if predictions is not None:
+            processed = SurgeProcessor.calculate_surge_from_predictions(
+                tide_df, predictions, method='pchip'
+            )
+
             if 'predicted' in processed.columns:
                 # Add predicted tide to row 1
                 fig.add_trace(go.Scatter(
@@ -238,49 +247,29 @@ def create_full_range_surge_chart(tide_df: pd.DataFrame, weather_df: pd.DataFram
     
     # Fetch and calculate surge for the full range
     try:
-        station_id = active_station.station_id
-        noaa_client = NOAAClient(station_id)
-        start_dt = tide_df.index.min()
-        end_dt = tide_df.index.max()
-        
-        # Fetch predictions in monthly chunks
-        all_predictions = []
-        current_start = start_dt
-        
-        while current_start < end_dt:
-            chunk_end = min(current_start + pd.DateOffset(months=1), end_dt)
-            chunk_predictions = noaa_client.fetch_predictions(current_start, chunk_end, use_hilo=True)
-            
-            if chunk_predictions is not None and not chunk_predictions.empty:
-                all_predictions.append(chunk_predictions)
-            
-            current_start = chunk_end
-        
-        if all_predictions:
-            predictions = pd.concat(all_predictions).sort_index()
-            predictions = predictions[~predictions.index.duplicated(keep='first')]
-            
-            from presentation_app.data.processor import SurgeProcessor
-            processor = SurgeProcessor()
-            processed = processor.calculate_surge_from_predictions(tide_df, predictions, method='pchip')
-            
+        noaa_client = NOAAClient(active_station.station_id)
+        predictions = _fetch_full_range_predictions(
+            noaa_client, tide_df.index.min(), tide_df.index.max()
+        )
+
+        if predictions is not None:
+            processed = SurgeProcessor.calculate_surge_from_predictions(
+                tide_df, predictions, method='pchip'
+            )
+
             if 'surge' in processed.columns:
-                # Add surge line
                 fig.add_trace(go.Scatter(
-                    x=processed.index, 
-                    y=processed['surge'], 
-                    mode='lines', 
+                    x=processed.index,
+                    y=processed['surge'],
+                    mode='lines',
                     name='Storm Surge',
                     line=dict(color='#e74c3c', width=1.5),
                     fill='tozeroy',
                     fillcolor='rgba(231, 76, 60, 0.2)',
                     hovertemplate='%{x|%Y-%m-%d %H:%M}<br>Surge: %{y:+.2f} ft<extra></extra>'
                 ))
-                
-                # Add zero line
                 fig.add_hline(y=0, line=dict(color='gray', width=1, dash='dash'), opacity=0.5)
-                
-                logger.info(f"Added surge data to full-range chart")
+                logger.info("Added surge data to full-range chart")
     except Exception as e:
         logger.warning(f"Could not calculate surge for full range: {e}", exc_info=True)
     
@@ -388,9 +377,8 @@ def get_initial_dates():
             weather_df = active_station.weather_df
             min_date_overlap = max(tide_df.index.min(), weather_df.index.min())
             max_date_overlap = min(tide_df.index.max(), weather_df.index.max())
-            forced_center = pd.Timestamp('2024-01-10')
-            center_date = forced_center
-            min_date = min(forced_center, min_date_overlap)
+            center_date = pd.Timestamp(DEFAULT_CENTER_DATE)
+            min_date = min(center_date, min_date_overlap)
             max_date = max_date_overlap
             logger.info(f"Initial dates: min={min_date}, max={max_date}, center={center_date}")
             return min_date, max_date, center_date
@@ -534,8 +522,6 @@ def process_data(center_date, session_id, data_version):
         processor = SurgeProcessor()
         processed_df = processor.calculate_surge_from_predictions(merged_df, predictions, method='pchip')
         anim_df = processor.resample_data(processed_df, interval='15min')
-        center_lat = active_station.lat
-        center_lon = active_station.lon
         station_name = active_station.name
         animation_frames = []
         for idx, (ts, row) in enumerate(anim_df.iterrows()):
@@ -549,10 +535,10 @@ def process_data(center_date, session_id, data_version):
                 ts_iso = str(ts)
                 ts_str = str(ts)
             animation_frames.append({'timestamp': ts_iso, 'timestamp_str': ts_str, 'surge': surge_val, 'wind_speed': wind_spd, 'wind_dir': wind_dir, 'water_level': row.get('water_level', 0)})
-        current_time = anim_df.index[0]
-        current_data = anim_df.iloc[0]
         wind_mode = 'arrows'
-        map_fig = create_presentation_map(anim_df, center_lat, center_lon, current_time, station_name, wind_history_mode=wind_mode, wind_rose_overlay=True)
+        render_station = dataclasses.replace(active_station, anim_df=anim_df)
+        map_fig = create_presentation_map([render_station], [0], wind_history_mode=wind_mode, wind_rose_overlay=True)
+        current_data = anim_df.iloc[0]
         water_chart = create_water_level_chart(anim_df, current_time, current_data)
         wind_chart = create_wind_speed_chart(anim_df, current_time, current_data)
         if isinstance(anim_df.index, pd.DatetimeIndex):
@@ -567,8 +553,6 @@ def process_data(center_date, session_id, data_version):
         animation_store = {
             'frames': animation_frames,
             'records': anim_records.to_dict('records'),
-            'center_lat': center_lat,
-            'center_lon': center_lon,
             'station_name': station_name,
             'station_id': station_id,
             'water_level_min': float(anim_df['water_level'].min()) - 1,
@@ -612,9 +596,8 @@ def update_time_position(time_idx, animation_data):
     frame = frames[time_idx]
     logger.info(f"update_time_position: time_idx={time_idx}, frame timestamp={frame.get('timestamp_str', 'N/A')}, total frames={len(frames)}")
     
-    # Rebuild DataFrame from cache for map updates
+    # Rebuild map from cached DataFrame
     try:
-        # Get the cache key from animation data to ensure we're using the right date's data
         stored_cache_key = animation_data.get('cache_key')
         df_cache_key = None
         if stored_cache_key:
@@ -622,20 +605,12 @@ def update_time_position(time_idx, animation_data):
             cache_key_tuple = ast.literal_eval(stored_cache_key)
             df_cache_key = f"{cache_key_tuple}_df"
 
-        anim_df = None
-        if df_cache_key:
-            anim_df = cache_get(df_cache_key)
+        anim_df = cache_get(df_cache_key) if df_cache_key else None
 
         if anim_df is not None:
-            # Make sure time_idx is within bounds
-            if time_idx >= len(anim_df):
-                time_idx = len(anim_df) - 1
-            current_time = anim_df.index[time_idx]
-            current_data = anim_df.iloc[time_idx]
-            station_id = animation_data.get('station_id', '8415191')
-            station_info = STATION_INFO.get(station_id, STATION_INFO['8415191'])
-            station_name = animation_data.get('station_name', station_info['name'])
-            map_fig = create_presentation_map(anim_df, station_info['lat'], station_info['lon'], current_time, station_name, wind_history_mode='arrows', wind_rose_overlay=True, current_idx=time_idx, current_data=current_data)
+            render_station = dataclasses.replace(active_station, anim_df=anim_df)
+            map_fig = create_presentation_map([render_station], [time_idx],
+                                             wind_history_mode='arrows', wind_rose_overlay=True)
             map_fig.update_layout(uirevision='map-constant', transition={'duration': 0})
         else:
             map_fig = dash.no_update
