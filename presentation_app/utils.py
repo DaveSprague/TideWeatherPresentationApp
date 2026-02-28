@@ -8,7 +8,7 @@ from typing import Dict, Optional
 from .config import (
     MAP_STYLE, DEFAULT_ZOOM, MAP_HEIGHT,
     MIN_WIND_SPEED_DISPLAY, WIND_ARROW_SCALE,
-    WIND_HISTORY_LENGTH, WIND_FADE_OPACITY_MIN, WIND_FADE_OPACITY_MAX
+    WIND_FADE_OPACITY_MIN, WIND_FADE_OPACITY_MAX
 )
 from .data.processor import SurgeProcessor
 
