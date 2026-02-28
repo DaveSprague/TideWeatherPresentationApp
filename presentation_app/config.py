@@ -90,6 +90,10 @@ NOAA_API_BASE = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
 API_TIMEOUT = 30
 PREDICTION_BUFFER_DAYS = 2
 
+# Hohonu sensor API (Maine coast + other regions)
+# Key stored in .env as HOHONU_API_KEY — load via python-dotenv or set in shell
+HOHONU_API_KEY = os.getenv('HOHONU_API_KEY', '')
+
 # Processing
 TIDAL_WINDOW = '25h'
 DATA_WINDOW_HOURS = 18  # Hours before/after center date for data window
