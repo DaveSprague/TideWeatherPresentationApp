@@ -24,6 +24,7 @@ from presentation_app.data.noaa_api import NOAAClient
 from presentation_app.data.processor import SurgeProcessor
 from presentation_app.cache import LRUCacheTTL
 from presentation_app.config import STATION_INFO, CACHE_ENABLED, CACHE_MAX_SIZE, CACHE_TTL_SECONDS, DATA_WINDOW_HOURS, SLIDER_MARK_STRIDE, WIND_SPEED_UNIT, KNOTS_TO_MPH
+from presentation_app.data.models import StationData
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -141,7 +142,7 @@ def create_full_range_combined_chart(tide_df: pd.DataFrame, weather_df: pd.DataF
     # Row 2 & 3: Will be populated with surge and wind data
     # Fetch predictions for tide and surge
     try:
-        station_id = app_data.get('station_id', '8415191')
+        station_id = active_station.station_id
         noaa_client = NOAAClient(station_id)
         start_dt = tide_df.index.min()
         end_dt = tide_df.index.max()
@@ -237,7 +238,7 @@ def create_full_range_surge_chart(tide_df: pd.DataFrame, weather_df: pd.DataFram
     
     # Fetch and calculate surge for the full range
     try:
-        station_id = app_data.get('station_id', '8415191')
+        station_id = active_station.station_id
         noaa_client = NOAAClient(station_id)
         start_dt = tide_df.index.min()
         end_dt = tide_df.index.max()
@@ -354,7 +355,15 @@ def build_frame_patches(frame):
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP], suppress_callback_exceptions=True)
 app.title = "Storm Surge Visualization - Presentation Mode"
 server = app.server  # Expose Flask server for gunicorn
-app_data = {'tide_df': None,'weather_df': None,'station_id': '8415191'}
+
+_default_station_cfg = STATION_INFO['8415191']
+active_station = StationData(
+    station_id='8415191',
+    name=_default_station_cfg['name'],
+    lat=_default_station_cfg['lat'],
+    lon=_default_station_cfg['lon'],
+)
+
 # In-memory cache: LRU + TTL when enabled, plain dict otherwise
 session_cache = LRUCacheTTL(max_size=CACHE_MAX_SIZE, ttl_seconds=CACHE_TTL_SECONDS) if CACHE_ENABLED else {}
 
@@ -363,22 +372,20 @@ try:
     tide_file = BASE_PATH / 'tide_belfast.csv'
     weather_file = BASE_PATH / 'weather_belfast.csv'
     logger.info(f"Loading data from: tide={tide_file}, weather={weather_file}")
-    tide_df = loader.load_tide_csv(tide_file)
-    weather_df = loader.load_weather_csv(weather_file)
-    app_data['tide_df'] = tide_df
-    app_data['weather_df'] = weather_df
-    logger.info(f"Loaded default data: {len(tide_df)} tide rows, {len(weather_df)} weather rows")
+    active_station.tide_df = loader.load_tide_csv(tide_file)
+    active_station.weather_df = loader.load_weather_csv(weather_file)
+    logger.info(f"Loaded default data: {len(active_station.tide_df)} tide rows, {len(active_station.weather_df)} weather rows")
 except Exception as e:
     logger.warning(f"Could not load default data: {e}")
 
 
 def get_initial_dates():
     """Get initial date range from loaded tide and weather data."""
-    if app_data['tide_df'] is not None and app_data['weather_df'] is not None:
+    if active_station.has_data:
         try:
             # Data is already loaded and processed with datetime index
-            tide_df = app_data['tide_df']
-            weather_df = app_data['weather_df']
+            tide_df = active_station.tide_df
+            weather_df = active_station.weather_df
             min_date_overlap = max(tide_df.index.min(), weather_df.index.min())
             max_date_overlap = min(tide_df.index.max(), weather_df.index.max())
             forced_center = pd.Timestamp('2024-01-10')
@@ -424,11 +431,11 @@ def ensure_session_id(_, existing):
 )
 def populate_full_range_chart(session_id):
     """Populate the combined full-range chart with tide, surge, and wind subplots on page load."""
-    if app_data['tide_df'] is None or app_data['weather_df'] is None:
+    if not active_station.has_data:
         return create_empty_figure('No data available')
-    
+
     try:
-        combined_fig = create_full_range_combined_chart(app_data['tide_df'], app_data['weather_df'])
+        combined_fig = create_full_range_combined_chart(active_station.tide_df, active_station.weather_df)
         return combined_fig
     except Exception as e:
         logger.error(f"Error creating full-range chart: {e}", exc_info=True)
@@ -455,12 +462,12 @@ def invalidate_cache_on_upload(tide_contents, weather_contents, current_version)
     prevent_initial_call=True
 )
 def load_sample_data(n_clicks):
-    if app_data['tide_df'] is None or app_data['weather_df'] is None:
+    if not active_station.has_data:
         return dash.no_update
     try:
         # Data is already loaded and processed with datetime index
-        tide_df = app_data['tide_df']
-        weather_df = app_data['weather_df']
+        tide_df = active_station.tide_df
+        weather_df = active_station.weather_df
         min_date = max(tide_df.index.min(), weather_df.index.min())
         max_date = min(tide_df.index.max(), weather_df.index.max())
         center_date = min_date + (max_date - min_date) / 2
@@ -487,7 +494,7 @@ def load_sample_data(n_clicks):
 )
 def process_data(center_date, session_id, data_version):
     logger.info(f"process_data called with center_date={center_date}")
-    if app_data['tide_df'] is None or app_data['weather_df'] is None:
+    if not active_station.has_data:
         empty_fig = create_empty_figure('Upload data to begin')
         return empty_fig, empty_fig, empty_fig, "No data", 0, {}, None, "--:--", "--", "--"
     try:
@@ -502,8 +509,8 @@ def process_data(center_date, session_id, data_version):
         logger.info(f"Calculated window: center_dt={center_dt}, start_dt={start_dt}, end_dt={end_dt}")
         loader = DataLoader()
         # Data is already loaded and processed with datetime index
-        tide_raw = app_data['tide_df']
-        weather_raw = app_data['weather_df']
+        tide_raw = active_station.tide_df
+        weather_raw = active_station.weather_df
         available_min = max(tide_raw.index.min(), weather_raw.index.min())
         available_max = min(tide_raw.index.max(), weather_raw.index.max())
         logger.info(f"Available data range: {available_min} to {available_max}")
@@ -517,7 +524,7 @@ def process_data(center_date, session_id, data_version):
         merged_df = loader.merge_datasets(tide_df, weather_df)
         if merged_df.empty:
             raise ValueError("No data after merging")
-        station_id = app_data['station_id']
+        station_id = active_station.station_id
         noaa_client = NOAAClient(station_id)
         predictions = noaa_client.fetch_predictions(start_dt, end_dt, use_hilo=True)
         if predictions is None:
@@ -527,10 +534,9 @@ def process_data(center_date, session_id, data_version):
         processor = SurgeProcessor()
         processed_df = processor.calculate_surge_from_predictions(merged_df, predictions, method='pchip')
         anim_df = processor.resample_data(processed_df, interval='15min')
-        station_info = STATION_INFO.get(station_id, STATION_INFO['8415191'])
-        center_lat = station_info['lat']
-        center_lon = station_info['lon']
-        station_name = station_info['name']
+        center_lat = active_station.lat
+        center_lon = active_station.lon
+        station_name = active_station.name
         animation_frames = []
         for idx, (ts, row) in enumerate(anim_df.iterrows()):
             surge_val = row.get('surge', 0)
